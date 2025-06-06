@@ -1,4 +1,23 @@
-Please analyze the following abstract of papers. 
+Please analyze the following paper abstract.
 
 Content:
 {content}
+
+Respond ONLY in JSON format with these fields:
+- tldr
+- motivation
+- method
+- result
+- conclusion
+
+Example:
+{
+  "tldr": "...",
+  "motivation": "...",
+  "method": "...",
+  "result": "...",
+  "conclusion": "..."
+}
+
+All content must be in {language}.
+Your response MUST be a valid JSON object with all fields present and filled.
