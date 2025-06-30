@@ -1784,6 +1784,354 @@
                 opacity: 0.8;
             }
         }
+        
+        /* 个性化功能样式 */
+        
+        /* 模态框样式 */
+        /* 模态框样式 - 增强滚动条兼容性 */
+        .modal-content {
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        /* Firefox 支持 - 使用特性查询确保兼容性 */
+        @supports (scrollbar-width: thin) {
+            .modal-content {
+                scrollbar-width: thin;
+                scrollbar-color: var(--border-secondary) transparent;
+            }
+        }
+        
+        /* WebKit 内核浏览器支持 (Chrome, Safari, Edge) */
+        .modal-content::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .modal-content::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        .modal-content::-webkit-scrollbar-thumb {
+            background-color: var(--border-secondary);
+            border-radius: 3px;
+        }
+        
+        .modal-content::-webkit-scrollbar-thumb:hover {
+            background-color: var(--border-primary);
+        }
+        
+        /* 为不支持自定义滚动条的浏览器提供回退 */
+        @supports not (scrollbar-width: thin) {
+            .modal-content {
+                padding-right: 8px; /* 为原生滚动条留出空间 */
+            }
+        }
+        
+        /* 设置面板中的表单控件 */
+        .settings-form input[type="number"],
+        .settings-form select {
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .settings-form input[type="number"]:focus,
+        .settings-form select:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* 自定义分类样式 */
+        .custom-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            margin-right: 0.25rem;
+            margin-bottom: 0.25rem;
+            transition: background-color 0.2s ease;
+        }
+        
+        .custom-tag:hover {
+            background-color: var(--accent-primary);
+            color: white;
+        }
+        
+        .tag-remove {
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 0.25rem;
+            opacity: 0.7;
+            transition: opacity 0.2s ease;
+        }
+        
+        .tag-remove:hover {
+            opacity: 1;
+        }
+        
+        /* 评分星星样式 */
+        .star {
+            cursor: pointer;
+            color: #d1d5db;
+            transition: color 0.2s ease;
+            font-size: 1.25rem;
+            margin-right: 0.125rem;
+        }
+        
+        .star:hover,
+        .star.active {
+            color: #fbbf24;
+        }
+        
+        /* 推荐面板样式 */
+        .recommendations-panel {
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.95);
+            border: 1px solid var(--border-primary);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        
+        [data-theme="dark"] .recommendations-panel {
+            background-color: rgba(30, 41, 59, 0.95);
+        }
+        
+        /* 阅读统计图表样式 */
+        .reading-stats-bar {
+            height: 8px;
+            background-color: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .reading-stats-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        
+        /* 导出按钮样式 */
+        .export-btn {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .export-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.3s ease;
+        }
+        
+        .export-btn:hover::before {
+            left: 100%;
+        }
+        
+        /* 数据管理区域样式 */
+        .data-management-section {
+            border: 1px solid var(--border-primary);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            background-color: var(--bg-secondary);
+            transition: border-color 0.2s ease;
+        }
+        
+        .data-management-section:hover {
+            border-color: var(--accent-primary);
+        }
+        
+        /* 进度指示器样式 */
+        .progress-ring {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: conic-gradient(var(--accent-primary) 0deg, var(--bg-tertiary) 0deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .progress-ring::before {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--bg-secondary);
+        }
+        
+        .progress-text {
+            position: relative;
+            z-index: 1;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        /* 笔记区域样式 */
+        .paper-notes {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+            background-color: var(--bg-tertiary);
+            border-radius: 0.375rem;
+            margin-top: 0.5rem;
+        }
+        
+        .paper-notes.visible {
+            max-height: 200px;
+            opacity: 1;
+            padding: 0.75rem;
+        }
+        
+        .paper-notes textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 0.5rem;
+            border: 1px solid var(--border-primary);
+            border-radius: 0.25rem;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            resize: vertical;
+            font-size: 0.875rem;
+            line-height: 1.4;
+        }
+        
+        .paper-notes textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+        }
+        
+        /* 紧凑视图隐藏某些元素 */
+        .compact-view .compact-hidden {
+            display: none;
+        }
+        
+        /* 阅读目标样式 */
+        .reading-goal-progress {
+            background: linear-gradient(90deg, #10b981, #34d399);
+            border-radius: 9999px;
+            height: 6px;
+            transition: width 0.3s ease;
+        }
+        
+        /* 工具提示样式 */
+        .tooltip {
+            position: relative;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+        }
+        
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        /* 响应式调整 */
+        @media (max-width: 768px) {
+            .modal-content {
+                margin: 1rem;
+                max-width: calc(100vw - 2rem);
+            }
+            
+            .recommendations-panel {
+                top: auto !important;
+                bottom: 4rem;
+                left: 1rem;
+                right: 1rem;
+                width: auto;
+            }
+            
+            .custom-tag {
+                font-size: 0.625rem;
+                padding: 0.125rem 0.375rem;
+            }
+            
+            .star {
+                font-size: 1rem;
+            }
+        }
+        
+        /* 动画增强 */
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        /* 数据大小指示器 */
+        .storage-indicator {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .storage-indicator::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-primary);
+            opacity: 0;
+            transform: scale(0);
+            transition: all 0.2s ease;
+        }
+        
+        .storage-indicator.has-data::after {
+            opacity: 1;
+            transform: scale(1);
+        }
     </style>
 </head>
 <body class="text-gray-800" data-theme="light">
@@ -1829,6 +2177,19 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
                 <span class="text-sm font-medium">新手教程</span>
+            </button>
+            <button id="settings-btn" class="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition" title="个人设置">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span class="text-sm font-medium">个人设置</span>
+            </button>
+            <button id="data-management-btn" class="flex items-center gap-2 px-4 py-2 bg-orange-50 text-orange-600 rounded-lg hover:bg-orange-100 transition" title="数据管理">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span class="text-sm font-medium">数据管理</span>
             </button>
         </div>
     </header>
@@ -2166,7 +2527,34 @@
             defaultView: 'detailed',
             autoHideWelcome: false,
             showTooltips: true,
-            enableKeyboardNav: true
+            enableKeyboardNav: true,
+            // 新增个性化偏好
+            autoSaveInterval: 30000, // 自动保存间隔(毫秒)
+            recommendationEnabled: true,
+            maxRecentPapers: 50,
+            customCategories: new Map(), // 自定义分类
+            paperInteractions: new Map(), // 论文交互记录
+            readingGoals: {
+                dailyTarget: 5,
+                weeklyTarget: 30,
+                currentStreak: 0,
+                longestStreak: 0
+            }
+        },
+        // 阅读历史和行为追踪
+        readingHistory: {
+            viewedPapers: new Map(), // paperID -> { timestamp, duration, interactions }
+            readingSessions: [], // 阅读会话记录
+            preferences: new Map(), // 基于行为的偏好权重
+            recommendations: [] // 智能推荐列表
+        },
+        // 数据管理
+        dataManagement: {
+            lastBackup: null,
+            autoBackup: true,
+            backupInterval: 24 * 60 * 60 * 1000, // 24小时
+            exportFormats: ['json', 'csv', 'bibtex', 'markdown'],
+            syncEnabled: false
         }
     };
 
@@ -2230,6 +2618,16 @@
     const firstVisitIndicator = document.getElementById('first-visit-indicator');
     const startTutorialBtn = document.getElementById('start-tutorial');
     const exploreNowBtn = document.getElementById('explore-now');
+    
+    // 个性化功能元素引用
+    const settingsBtn = document.getElementById('settings-btn');
+    const dataManagementBtn = document.getElementById('data-management-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const dataManagementModal = document.getElementById('data-management-modal');
+    const recommendationsPanel = document.getElementById('recommendations-panel');
+    const closeSettingsModal = document.getElementById('close-settings-modal');
+    const closeDataModal = document.getElementById('close-data-modal');
+    const closeRecommendations = document.getElementById('close-recommendations');
 
     // --- 性能监控和内存管理 ---
     const performance = {
@@ -2294,6 +2692,183 @@
     // --- 工具函数 ---
     function escapeCQ(str) { return str ? String(str).replace(/'/g, "\\'") : ''; }
     function escapeRegex(string) { return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+    // ==================== 智能缓存系统 ====================
+
+    // 缓存管理器
+    const CacheManager = {
+        cache: new Map(),
+        maxSize: 100, // 最大缓存条目数
+        
+        set(key, value, ttl = 300000) { // 默认5分钟TTL
+            const item = {
+                value,
+                timestamp: Date.now(),
+                ttl,
+                accessCount: 0
+            };
+            
+            // 如果缓存已满，删除最少使用的项目
+            if (this.cache.size >= this.maxSize) {
+                this.evictLeastUsed();
+            }
+            
+            this.cache.set(key, item);
+            this.updateCacheStats();
+        },
+        
+        get(key) {
+            const item = this.cache.get(key);
+            if (!item) return null;
+            
+            // 检查是否过期
+            if (Date.now() - item.timestamp > item.ttl) {
+                this.cache.delete(key);
+                this.updateCacheStats();
+                return null;
+            }
+            
+            // 更新访问计数
+            item.accessCount++;
+            return item.value;
+        },
+        
+        evictLeastUsed() {
+            let leastUsedKey = null;
+            let minAccessCount = Infinity;
+            
+            for (const [key, item] of this.cache.entries()) {
+                if (item.accessCount < minAccessCount) {
+                    minAccessCount = item.accessCount;
+                    leastUsedKey = key;
+                }
+            }
+            
+            if (leastUsedKey) {
+                this.cache.delete(leastUsedKey);
+            }
+        },
+        
+        clear() {
+            this.cache.clear();
+            this.updateCacheStats();
+        },
+        
+        getStats() {
+            let totalSize = 0;
+            let expiredCount = 0;
+            const now = Date.now();
+            
+            for (const [key, item] of this.cache.entries()) {
+                totalSize += JSON.stringify(item.value).length;
+                if (now - item.timestamp > item.ttl) {
+                    expiredCount++;
+                }
+            }
+            
+            return {
+                size: this.cache.size,
+                totalSize,
+                expiredCount,
+                hitRate: this.hitCount / (this.hitCount + this.missCount) || 0
+            };
+        },
+        
+        updateCacheStats() {
+            // 可以在这里更新UI显示
+            if (typeof updatePerformanceDisplay === 'function') {
+                updatePerformanceDisplay();
+            }
+        },
+        
+        hitCount: 0,
+        missCount: 0
+    };
+
+    // 缓存装饰器函数
+    function withCache(fn, keyGenerator = (...args) => JSON.stringify(args), ttl = 300000) {
+        return function(...args) {
+            const key = keyGenerator(...args);
+            const cached = CacheManager.get(key);
+            
+            if (cached !== null) {
+                CacheManager.hitCount++;
+                return cached;
+            }
+            
+            CacheManager.missCount++;
+            const result = fn.apply(this, args);
+            CacheManager.set(key, result, ttl);
+            return result;
+        };
+    }
+
+    // 为搜索结果添加缓存
+    const cachedSearch = withCache(
+        (query, papers) => papers.filter(paper => 
+            paper.title.toLowerCase().includes(query.toLowerCase()) ||
+            paper.title_zh?.toLowerCase().includes(query.toLowerCase()) ||
+            paper.summary.toLowerCase().includes(query.toLowerCase()) ||
+            paper.categories.some(cat => cat.toLowerCase().includes(query.toLowerCase()))
+        ),
+        (query, papers) => `search_${query}_${papers.length}`,
+        600000 // 10分钟缓存
+    );
+
+    // 为分类筛选添加缓存
+    const cachedCategoryFilter = withCache(
+        (papers, category) => {
+            if (category === 'all') return papers;
+            return papers.filter(paper => 
+                paper.categories.includes(category) ||
+                (paper.custom_categories && paper.custom_categories.includes(category))
+            );
+        },
+        (papers, category) => `category_${category}_${papers.length}`,
+        300000 // 5分钟缓存
+    );
+
+    // 性能监控系统
+    const performanceTracker = {
+        timers: new Map(),
+        
+        startTracking(label) {
+            this.timers.set(label, Date.now());
+        },
+        
+        endTracking(label) {
+            const startTime = this.timers.get(label);
+            if (startTime) {
+                const duration = Date.now() - startTime;
+                console.log(`Performance: ${label} took ${duration}ms`);
+                this.timers.delete(label);
+                return duration;
+            }
+            return 0;
+        }
+    };
+    
+    // 渲染时间测量函数
+    function measureRenderTime(renderFunction, label = 'render') {
+        const startTime = Date.now();
+        const result = renderFunction();
+        const duration = Date.now() - startTime;
+        if (duration > 50) { // 只记录超过50ms的渲染
+            console.log(`Render Performance: ${label} took ${duration}ms`);
+        }
+        return result;
+    }
+
+    // 预加载关键数据
+    function preloadCriticalData() {
+        // 预加载用户偏好相关的数据
+        setTimeout(() => {
+            if (state.userPreferences.recommendationEnabled) {
+                generateRecommendations();
+            }
+        }, 5000);
+    }
+
     async function applyViewTransition(updateFunction, vtName = '') {
         if (!document.startViewTransition) {
             await updateFunction();
@@ -2772,47 +3347,127 @@
         }
     }
 
+    // 全局错误处理器 - 用于捕获未定义的函数或变量错误
+    window.addEventListener('error', function(e) {
+        console.error('全局错误捕获:', {
+            message: e.message,
+            filename: e.filename,
+            lineno: e.lineno,
+            colno: e.colno,
+            error: e.error,
+            stack: e.error?.stack
+        });
+        
+        // 特别处理常见的未定义错误
+        if (e.message.includes('is not defined') || e.message.includes('undefined')) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50';
+            errorDiv.innerHTML = `
+                <strong>调试信息：</strong><br>
+                错误：${e.message}<br>
+                文件：${e.filename}<br>
+                行号：${e.lineno}:${e.colno}
+            `;
+            document.body.appendChild(errorDiv);
+            
+            // 5秒后自动移除
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+    });
+
+    // 捕获未处理的 Promise 拒绝
+    window.addEventListener('unhandledrejection', function(e) {
+        console.error('未处理的 Promise 拒绝:', e.reason);
+        console.error('Promise 拒绝堆栈:', e.reason?.stack);
+    });
+
     // --- 核心功能 ---
     async function init() {
+        console.log('开始初始化...');
         showProgress('正在初始化...');
         try {
-            // 加载所有设置
+            console.log('加载基础设置...');
+            // 基础设置加载
             loadFavorites();
             loadViewMode();
             loadSearchHistory();
-            loadPaperTags();
-            loadPaperNotes();
-            loadPaperRatings();
             initializeTheme();
             initializeSearchSuggestions();
-            initializeUserGuidance(); // 初始化用户引导系统
             
+            console.log('尝试加载用户偏好...');
+            // 尝试加载用户偏好和其他设置（如果函数存在）
+            try {
+                loadPaperTags();
+                loadPaperNotes();
+                loadPaperRatings();
+                loadUserPreferences();
+                loadReadingHistory();
+            } catch (e) {
+                console.warn('加载用户设置时出现警告:', e);
+            }
+            
+            console.log('尝试初始化用户引导...');
+            // 尝试初始化用户引导（如果函数存在）
+            try {
+                initializeUserGuidance();
+            } catch (e) {
+                console.warn('初始化用户引导时出现警告:', e);
+            }
+            
+            console.log('开始加载数据清单...');
+            // 加载数据清单
             const response = await fetch('./data/index.json');
+            console.log('数据清单请求响应状态:', response.status);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             state.manifest = await response.json();
+            console.log('数据清单加载成功:', state.manifest);
             
+            console.log('检查数据清单内容...');
             if (state.manifest.availableMonths && state.manifest.availableMonths.length > 0) {
+                console.log('数据清单有效，可用月份:', state.manifest.availableMonths);
+                console.log('开始设置UI...');
                 setupUI();
+                console.log('开始设置事件监听器...');
                 setupGlobalEventListeners();
                 
                 const urlParams = new URLSearchParams(window.location.search);
                 const queryFromUrl = urlParams.get('q');
                 const paperFromUrl = urlParams.get('paper');
 
+                console.log('URL参数 - 查询:', queryFromUrl, '论文:', paperFromUrl);
+
                 if (paperFromUrl) {
+                    console.log('处理直接链接...');
                     await handleDirectLink(paperFromUrl);
                 } else if (queryFromUrl) {
+                    console.log('处理URL查询...');
                     searchInput.value = queryFromUrl;
                     await handleSearch();
                 } else {
+                    console.log('加载默认内容...');
                     await loadNextMonth(false); 
                 }
             } else {
-                 papersContainer.innerHTML = `<p class="text-center text-gray-500">数据清单为空。</p>`;
+                console.log('数据清单为空或无效');
+                papersContainer.innerHTML = `<p class="text-center text-gray-500">数据清单为空。</p>`;
             }
         } catch (error) {
             console.error("Initialization failed:", error);
-            papersContainer.innerHTML = `<p class="text-center text-red-500">加载数据失败。请确保您在项目的 'docs' 目录下启动了本地服务器。</p>`;
+            console.error("Error details:", error.message);
+            console.error("Error stack:", error.stack);
+            
+            let errorMessage = '加载数据失败。';
+            if (error.message.includes('fetch')) {
+                errorMessage += '请确保您在项目的 "docs" 目录下启动了本地服务器。';
+            } else if (error.name === 'ReferenceError') {
+                errorMessage += '代码中存在未定义的函数或变量。';
+            } else {
+                errorMessage += `错误信息：${error.message}`;
+            }
+            
+            papersContainer.innerHTML = `<p class="text-center text-red-500">${errorMessage}</p>`;
         } finally {
             hideProgress();
         }
@@ -3002,6 +3657,500 @@
                 textarea.value = state.paperNotes.get(paperId) || '';
             }
         }
+    }
+
+    // --- 个性化功能增强 ---
+    
+    // 用户偏好管理
+    function loadUserPreferences() {
+        const preferences = localStorage.getItem('arxiv_user_preferences');
+        if (preferences) {
+            try {
+                const parsed = JSON.parse(preferences);
+                Object.assign(state.userPreferences, parsed);
+            } catch (e) {
+                console.warn('Failed to load user preferences:', e);
+            }
+        }
+    }
+    
+    function saveUserPreferences() {
+        localStorage.setItem('arxiv_user_preferences', JSON.stringify(state.userPreferences));
+    }
+    
+    // 阅读历史管理
+    function loadReadingHistory() {
+        const history = localStorage.getItem('arxiv_reading_history');
+        if (history) {
+            try {
+                const parsed = JSON.parse(history);
+                state.readingHistory.viewedPapers = new Map(Object.entries(parsed.viewedPapers || {}));
+                state.readingHistory.readingSessions = parsed.readingSessions || [];
+                state.readingHistory.preferences = new Map(Object.entries(parsed.preferences || {}));
+                state.readingHistory.recommendations = parsed.recommendations || [];
+            } catch (e) {
+                console.warn('Failed to load reading history:', e);
+            }
+        }
+    }
+    
+    function saveReadingHistory() {
+        const historyObj = {
+            viewedPapers: Object.fromEntries(state.readingHistory.viewedPapers),
+            readingSessions: state.readingHistory.readingSessions,
+            preferences: Object.fromEntries(state.readingHistory.preferences),
+            recommendations: state.readingHistory.recommendations
+        };
+        localStorage.setItem('arxiv_reading_history', JSON.stringify(historyObj));
+    }
+    
+    // 记录论文交互
+    function recordPaperInteraction(paperId, interactionType, duration = 0) {
+        const timestamp = Date.now();
+        const existing = state.readingHistory.viewedPapers.get(paperId) || {
+            timestamp: timestamp,
+            interactions: [],
+            totalDuration: 0
+        };
+        
+        existing.interactions.push({
+            type: interactionType,
+            timestamp: timestamp,
+            duration: duration
+        });
+        existing.totalDuration += duration;
+        existing.lastViewed = timestamp;
+        
+        state.readingHistory.viewedPapers.set(paperId, existing);
+        
+        // 更新阅读目标进度
+        updateReadingProgress();
+        
+        // 异步保存历史记录
+        setTimeout(() => saveReadingHistory(), 100);
+    }
+    
+    // 更新阅读进度和目标
+    function updateReadingProgress() {
+        const today = new Date().toDateString();
+        const todaysReading = Array.from(state.readingHistory.viewedPapers.values())
+            .filter(record => new Date(record.timestamp).toDateString() === today)
+            .length;
+        
+        // 更新连续阅读天数
+        updateReadingStreak();
+        
+        // 更新目标显示
+        updateReadingGoalsDisplay();
+    }
+    
+    function updateReadingStreak() {
+        const dates = Array.from(state.readingHistory.viewedPapers.values())
+            .map(record => new Date(record.timestamp).toDateString())
+            .filter((date, index, self) => self.indexOf(date) === index)
+            .sort((a, b) => new Date(b) - new Date(a));
+            
+        let currentStreak = 0;
+        const today = new Date().toDateString();
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toDateString();
+        
+        if (dates.includes(today)) {
+            currentStreak = 1;
+            for (let i = 1; i < dates.length; i++) {
+                const currentDate = new Date(dates[i-1]);
+                const prevDate = new Date(dates[i]);
+                const diffDays = Math.floor((currentDate - prevDate) / (24 * 60 * 60 * 1000));
+                
+                if (diffDays === 1) {
+                    currentStreak++;
+                } else {
+                    break;
+                }
+            }
+        } else if (dates.includes(yesterday)) {
+            // 昨天有阅读记录，今天没有，连续天数为0
+            currentStreak = 0;
+        }
+        
+        state.userPreferences.readingGoals.currentStreak = currentStreak;
+        if (currentStreak > state.userPreferences.readingGoals.longestStreak) {
+            state.userPreferences.readingGoals.longestStreak = currentStreak;
+        }
+        
+        saveUserPreferences();
+    }
+    
+    // 智能推荐算法
+    function generateRecommendations() {
+        if (!state.userPreferences.recommendationEnabled) return;
+        
+        const viewedPapers = Array.from(state.readingHistory.viewedPapers.keys());
+        if (viewedPapers.length < 3) return; // 需要至少3篇论文的历史记录
+        
+        const recommendations = [];
+        const categoryWeights = new Map();
+        const keywordWeights = new Map();
+        
+        // 分析用户偏好
+        viewedPapers.forEach(paperId => {
+            const paper = state.allPapers.get(paperId);
+            const record = state.readingHistory.viewedPapers.get(paperId);
+            
+            if (paper && record) {
+                // 基于阅读时长和交互次数计算权重
+                const weight = Math.log(record.totalDuration + 1) * record.interactions.length;
+                
+                // 分类权重
+                if (paper.categories) {
+                    paper.categories.forEach(category => {
+                        categoryWeights.set(category, (categoryWeights.get(category) || 0) + weight);
+                    });
+                }
+                
+                // 关键词权重
+                if (paper.keywords) {
+                    paper.keywords.forEach(keyword => {
+                        keywordWeights.set(keyword, (keywordWeights.get(keyword) || 0) + weight);
+                    });
+                }
+            }
+        });
+        
+        // 生成推荐
+        const allPaperIds = Array.from(state.allPapers.keys());
+        const unviewedPapers = allPaperIds.filter(id => !viewedPapers.includes(id));
+        
+        const scoredPapers = unviewedPapers.map(paperId => {
+            const paper = state.allPapers.get(paperId);
+            let score = 0;
+            
+            if (paper.categories) {
+                paper.categories.forEach(category => {
+                    score += categoryWeights.get(category) || 0;
+                });
+            }
+            
+            if (paper.keywords) {
+                paper.keywords.forEach(keyword => {
+                    score += keywordWeights.get(keyword) || 0;
+                });
+            }
+            
+            return { paperId, score, paper };
+        }).filter(item => item.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 10);
+        
+        state.readingHistory.recommendations = scoredPapers;
+        saveReadingHistory();
+        
+        return scoredPapers;
+    }
+    
+    // 数据导出功能
+    function exportFavorites(format) {
+        const favorites = Array.from(state.favorites);
+        const papersData = favorites.map(id => state.allPapers.get(id)).filter(Boolean);
+        
+        let content, filename, mimeType;
+        
+        switch (format) {
+            case 'json':
+                content = JSON.stringify(papersData, null, 2);
+                filename = `arxiv-favorites-${new Date().toISOString().split('T')[0]}.json`;
+                mimeType = 'application/json';
+                break;
+                
+            case 'csv':
+                const csvHeaders = ['ID', 'Title', 'Authors', 'Abstract', 'Categories', 'Keywords', 'Date'];
+                const csvRows = papersData.map(paper => [
+                    paper.id || '',
+                    `"${(paper.title || '').replace(/"/g, '""')}"`,
+                    `"${(paper.authors || '').replace(/"/g, '""')}"`,
+                    `"${(paper.abstract || '').replace(/"/g, '""')}"`,
+                    `"${(paper.categories || []).join(', ')}"`,
+                    `"${(paper.keywords || []).join(', ')}"`,
+                    paper.date || ''
+                ]);
+                content = [csvHeaders.join(','), ...csvRows.map(row => row.join(','))].join('\n');
+                filename = `arxiv-favorites-${new Date().toISOString().split('T')[0]}.csv`;
+                mimeType = 'text/csv';
+                break;
+                
+            case 'bibtex':
+                content = papersData.map(paper => {
+                    const year = paper.date ? paper.date.split('-')[0] : '';
+                    const authors = paper.authors ? paper.authors.split(',').map(a => a.trim()).join(' and ') : '';
+                    return `@article{${paper.id},
+  title={${paper.title || ''}},
+  author={${authors}},
+  journal={arXiv preprint arXiv:${paper.id}},
+  year={${year}},
+  url={https://arxiv.org/abs/${paper.id}}
+}`;
+                }).join('\n\n');
+                filename = `arxiv-favorites-${new Date().toISOString().split('T')[0]}.bib`;
+                mimeType = 'text/plain';
+                break;
+                
+            case 'markdown':
+                content = `# arXiv 收藏夹\n\n导出时间: ${new Date().toLocaleString()}\n总计: ${papersData.length} 篇论文\n\n---\n\n`;
+                content += papersData.map((paper, index) => {
+                    return `## ${index + 1}. ${paper.title || '无标题'}
+
+**作者**: ${paper.authors || '未知'}  
+**分类**: ${(paper.categories || []).join(', ')}  
+**关键词**: ${(paper.keywords || []).join(', ')}  
+**arXiv ID**: [${paper.id}](https://arxiv.org/abs/${paper.id})  
+**PDF链接**: [PDF](https://arxiv.org/pdf/${paper.id})  
+
+**摘要**: ${paper.abstract || '无摘要'}
+
+${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
+
+---
+`;
+                }).join('\n');
+                filename = `arxiv-favorites-${new Date().toISOString().split('T')[0]}.md`;
+                mimeType = 'text/markdown';
+                break;
+                
+            default:
+                showToast('不支持的导出格式', 'error');
+                return;
+        }
+        
+        downloadFile(content, filename, mimeType);
+        showToast(`已导出 ${papersData.length} 篇论文为 ${format.toUpperCase()} 格式`);
+    }
+    
+    // 导出其他用户数据
+    function exportUserData(dataType) {
+        let content, filename, mimeType = 'application/json';
+        
+        switch (dataType) {
+            case 'notes':
+                const notesObj = Object.fromEntries(state.paperNotes);
+                content = JSON.stringify(notesObj, null, 2);
+                filename = `arxiv-notes-${new Date().toISOString().split('T')[0]}.json`;
+                break;
+                
+            case 'tags':
+                const tagsObj = Object.fromEntries(state.paperTags);
+                content = JSON.stringify(tagsObj, null, 2);
+                filename = `arxiv-tags-${new Date().toISOString().split('T')[0]}.json`;
+                break;
+                
+            case 'ratings':
+                const ratingsObj = Object.fromEntries(state.paperRatings);
+                content = JSON.stringify(ratingsObj, null, 2);
+                filename = `arxiv-ratings-${new Date().toISOString().split('T')[0]}.json`;
+                break;
+                
+            case 'all':
+                const allData = {
+                    favorites: Array.from(state.favorites),
+                    notes: Object.fromEntries(state.paperNotes),
+                    tags: Object.fromEntries(state.paperTags),
+                    ratings: Object.fromEntries(state.paperRatings),
+                    preferences: state.userPreferences,
+                    readingHistory: {
+                        viewedPapers: Object.fromEntries(state.readingHistory.viewedPapers),
+                        readingSessions: state.readingHistory.readingSessions,
+                        preferences: Object.fromEntries(state.readingHistory.preferences)
+                    },
+                    exportDate: new Date().toISOString(),
+                    version: '1.0'
+                };
+                content = JSON.stringify(allData, null, 2);
+                filename = `arxiv-complete-backup-${new Date().toISOString().split('T')[0]}.json`;
+                break;
+                
+            default:
+                showToast('不支持的数据类型', 'error');
+                return;
+        }
+        
+        downloadFile(content, filename, mimeType);
+        showToast('数据导出成功');
+    }
+    
+    // 数据导入功能
+    function importUserData(fileContent) {
+        try {
+            const data = JSON.parse(fileContent);
+            
+            // 验证数据格式
+            if (data.version && data.exportDate) {
+                // 完整备份格式
+                if (confirm('这将覆盖现有的所有用户数据。是否继续？')) {
+                    if (data.favorites) state.favorites = new Set(data.favorites);
+                    if (data.notes) state.paperNotes = new Map(Object.entries(data.notes));
+                    if (data.tags) state.paperTags = new Map(Object.entries(data.tags));
+                    if (data.ratings) state.paperRatings = new Map(Object.entries(data.ratings));
+                    if (data.preferences) Object.assign(state.userPreferences, data.preferences);
+                    if (data.readingHistory) {
+                        if (data.readingHistory.viewedPapers) {
+                            state.readingHistory.viewedPapers = new Map(Object.entries(data.readingHistory.viewedPapers));
+                        }
+                        if (data.readingHistory.readingSessions) {
+                            state.readingHistory.readingSessions = data.readingHistory.readingSessions;
+                        }
+                        if (data.readingHistory.preferences) {
+                            state.readingHistory.preferences = new Map(Object.entries(data.readingHistory.preferences));
+                        }
+                    }
+                }
+            } else {
+                // 部分数据导入
+                if (Array.isArray(data)) {
+                    // 收藏夹数据
+                    if (confirm('检测到收藏夹数据，是否导入？')) {
+                        data.forEach(id => state.favorites.add(id));
+                    }
+                } else if (typeof data === 'object') {
+                    // 其他类型的数据
+                    if (confirm('检测到用户数据，是否导入？')) {
+                        // 简单的对象导入逻辑
+                        Object.keys(data).forEach(key => {
+                            if (state.paperNotes && state.paperNotes.set) {
+                                state.paperNotes.set(key, data[key]);
+                            }
+                        });
+                    }
+                }
+            }
+            
+            // 保存所有数据
+            saveFavorites();
+            savePaperNotes();
+            savePaperTags();
+            savePaperRatings();
+            saveUserPreferences();
+            saveReadingHistory();
+            
+            showToast('数据导入成功', 'success');
+            
+            // 刷新UI
+            updatePersonalizationUI();
+            
+        } catch (error) {
+            console.error('Import error:', error);
+            showToast('数据格式错误，导入失败', 'error');
+        }
+    }
+    
+    // 文件下载辅助函数
+    function downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    
+    // 更新个性化UI
+    function updatePersonalizationUI() {
+        // 更新设置面板中的统计信息
+        const totalFavorites = document.getElementById('total-favorites');
+        const totalNotes = document.getElementById('total-notes');
+        const totalPapersRead = document.getElementById('total-papers-read');
+        const avgRating = document.getElementById('avg-rating');
+        const currentStreak = document.getElementById('current-streak');
+        const longestStreak = document.getElementById('longest-streak');
+        
+        if (totalFavorites) totalFavorites.textContent = state.favorites.size;
+        if (totalNotes) totalNotes.textContent = state.paperNotes.size;
+        if (totalPapersRead) totalPapersRead.textContent = state.readingHistory.viewedPapers.size;
+        if (currentStreak) currentStreak.textContent = `${state.userPreferences.readingGoals.currentStreak} 天`;
+        if (longestStreak) longestStreak.textContent = `${state.userPreferences.readingGoals.longestStreak} 天`;
+        
+        // 计算平均评分
+        if (avgRating) {
+            const ratings = Array.from(state.paperRatings.values());
+            const avg = ratings.length > 0 ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : '0.0';
+            avgRating.textContent = avg;
+        }
+        
+        // 更新存储统计
+        const storageFavorites = document.getElementById('storage-favorites');
+        const storageNotes = document.getElementById('storage-notes');
+        const storageTags = document.getElementById('storage-tags');
+        const storageSize = document.getElementById('storage-size');
+        
+        if (storageFavorites) storageFavorites.textContent = state.favorites.size;
+        if (storageNotes) storageNotes.textContent = state.paperNotes.size;
+        if (storageTags) storageTags.textContent = state.paperTags.size;
+        
+        // 计算存储大小
+        if (storageSize) {
+            const totalSize = new Blob([
+                localStorage.getItem('arxiv_favorites') || '',
+                localStorage.getItem('arxiv_paper_notes') || '',
+                localStorage.getItem('arxiv_paper_tags') || '',
+                localStorage.getItem('arxiv_paper_ratings') || '',
+                localStorage.getItem('arxiv_user_preferences') || '',
+                localStorage.getItem('arxiv_reading_history') || ''
+            ]).size;
+            storageSize.textContent = totalSize > 1024 ? `${(totalSize / 1024).toFixed(1)} KB` : `${totalSize} B`;
+        }
+        
+        // 更新阅读分类统计
+        updateReadingCategoriesChart();
+    }
+    
+    // 更新阅读分类统计图表
+    function updateReadingCategoriesChart() {
+        const chartContainer = document.getElementById('reading-categories-chart');
+        if (!chartContainer) return;
+        
+        const categoryStats = new Map();
+        
+        // 统计各分类的阅读次数
+        state.readingHistory.viewedPapers.forEach((record, paperId) => {
+            const paper = state.allPapers.get(paperId);
+            if (paper && paper.categories) {
+                paper.categories.forEach(category => {
+                    categoryStats.set(category, (categoryStats.get(category) || 0) + 1);
+                });
+            }
+        });
+        
+        const sortedCategories = Array.from(categoryStats.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+        
+        if (sortedCategories.length === 0) {
+            chartContainer.innerHTML = '<p class="text-sm text-gray-500">暂无阅读记录</p>';
+            return;
+        }
+        
+        const maxCount = sortedCategories[0][1];
+        
+        chartContainer.innerHTML = sortedCategories.map(([category, count]) => {
+            const percentage = (count / maxCount) * 100;
+            return `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm text-gray-700">${category}</span>
+                    <div class="flex items-center gap-2">
+                        <div class="w-20 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div class="h-full bg-blue-500 rounded-full" style="width: ${percentage}%"></div>
+                        </div>
+                        <span class="text-xs text-gray-500 w-8 text-right">${count}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    // 更新阅读目标显示
+    function updateReadingGoalsDisplay() {
+        // 在个性化面板中更新目标进度
+        // 这个函数可以在后续扩展
     }
 
     // --- UI/UX 功能 ---
@@ -3283,33 +4432,35 @@
     }
 
     function renderPapers(papersForMonth, month) {
-        const monthWrapper = document.createElement('div');
-        monthWrapper.id = `month-content-${month}`;
-        monthWrapper.dataset.monthAnchor = month;
+        return measureRenderTime(() => {
+            const monthWrapper = document.createElement('div');
+            monthWrapper.id = `month-content-${month}`;
+            monthWrapper.dataset.monthAnchor = month;
 
-        const header = document.createElement('h2');
-        header.className = 'month-header';
-        header.textContent = `${month.substring(0,4)}年${month.substring(5,7)}月`;
-        
-        const dateFilterWrapper = document.createElement('div');
-        dateFilterWrapper.id = `date-filter-wrapper-${month}`;
-        dateFilterWrapper.className = 'flex flex-wrap items-center gap-2 mb-6';
-        
-        const papersListWrapper = document.createElement('div');
-        papersListWrapper.id = `papers-list-wrapper-${month}`;
-        papersListWrapper.className = 'space-y-8';
-        
-        monthWrapper.append(header, dateFilterWrapper, papersListWrapper);
-        papersContainer.appendChild(monthWrapper);
-        
-        if (state.navObserver) {
-            state.navObserver.observe(monthWrapper);
-            console.log(`navObserver now observing month ${month}`);
-        } else {
-            console.log('navObserver is null, skipping observe');
-        }
-        
-        updateMonthView(month, papersForMonth);
+            const header = document.createElement('h2');
+            header.className = 'month-header';
+            header.textContent = `${month.substring(0,4)}年${month.substring(5,7)}月`;
+            
+            const dateFilterWrapper = document.createElement('div');
+            dateFilterWrapper.id = `date-filter-wrapper-${month}`;
+            dateFilterWrapper.className = 'flex flex-wrap items-center gap-2 mb-6';
+            
+            const papersListWrapper = document.createElement('div');
+            papersListWrapper.id = `papers-list-wrapper-${month}`;
+            papersListWrapper.className = 'space-y-8';
+            
+            monthWrapper.append(header, dateFilterWrapper, papersListWrapper);
+            papersContainer.appendChild(monthWrapper);
+            
+            if (state.navObserver) {
+                state.navObserver.observe(monthWrapper);
+                console.log(`navObserver now observing month ${month}`);
+            } else {
+                console.log('navObserver is null, skipping observe');
+            }
+            
+            updateMonthView(month, papersForMonth);
+        }, `renderPapers-${month}`);
     }
     
     function updateMonthView(month, allPapersForMonth) {
@@ -3557,7 +4708,8 @@
                 <a href="${absUrl}" target="_blank" class="paper-link-abstract font-semibold">摘要页</a>
                 <a href="${pdfUrl}" target="_blank" class="paper-link-pdf font-semibold">PDF</a>
                 <button data-action="toggle-ai-details" data-paper-id="${paper.id}" class="ml-auto ai-toggle-btn font-bold py-2 px-4 rounded-lg transition compact-hidden">AI分析</button>
-            </div>`;
+            </div>
+        `;
     }
 
     function toggleAIDetails(paperId) {
@@ -3604,7 +4756,7 @@
     // 修复：重构月份导航逻辑，确保其行为正确
     async function navigateToMonth(month) {
         console.log(`=== NAVIGATE TO MONTH START ===`);
-        performance.startTracking(`Navigate to ${month}`);
+        performanceTracker.startTracking(`Navigate to ${month}`);
         
         console.log(`navigateToMonth called with month: ${month}`);
         console.log(`isFetching: ${state.isFetching}`);
@@ -3674,7 +4826,7 @@
             console.log('Scrolled to top');
             console.log('Navigation completed successfully');
             
-            performance.endTracking(`Navigate to ${month}`);
+            performanceTracker.endTracking(`Navigate to ${month}`);
 
         } catch (error) {
             console.error('Navigation error:', error);
@@ -3936,16 +5088,10 @@
         }, duration);
     }
 
-    async function sharePaper(paperId) {
-        const url = new URL(window.location.origin + window.location.pathname);
-        url.searchParams.set('paper', paperId);
-        try {
-            await navigator.clipboard.writeText(url.href);
-            showToast('链接已复制到剪贴板！');
-        } catch (err) {
-            console.error('无法复制链接: ', err);
-            showToast('复制失败。');
-        }
+    // 显示收藏夹
+    function showFavorites() {
+        searchInput.value = 'favorites';
+        handleSearch();
     }
 
     function setupGlobalEventListeners() {
@@ -4129,6 +5275,425 @@
                 }
                 lastTouchEnd = now;
             }, false);
+        }
+        
+        // 个性化功能事件监听器
+        setupPersonalizationEventListeners();
+    }
+    
+    // 个性化功能事件监听器设置
+    function setupPersonalizationEventListeners() {
+        // 设置按钮
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => {
+                openSettingsModal();
+            });
+        }
+        
+        // 数据管理按钮
+        if (dataManagementBtn) {
+            dataManagementBtn.addEventListener('click', () => {
+                openDataManagementModal();
+            });
+        }
+        
+        // 模态框关闭按钮
+        if (closeSettingsModal) {
+            closeSettingsModal.addEventListener('click', () => {
+                closeModal('settings-modal');
+            });
+        }
+        
+        if (closeDataModal) {
+            closeDataModal.addEventListener('click', () => {
+                closeModal('data-management-modal');
+            });
+        }
+        
+        if (closeRecommendations) {
+            closeRecommendations.addEventListener('click', () => {
+                hideRecommendationsPanel();
+            });
+        }
+        
+        // 设置面板中的控件事件
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+            
+            // 导出功能
+            if (target.id === 'export-favorites-json') exportFavorites('json');
+            else if (target.id === 'export-favorites-csv') exportFavorites('csv');
+            else if (target.id === 'export-favorites-bibtex') exportFavorites('bibtex');
+            else if (target.id === 'export-favorites-markdown') exportFavorites('markdown');
+            else if (target.id === 'export-notes-json') exportUserData('notes');
+            else if (target.id === 'export-tags-json') exportUserData('tags');
+            else if (target.id === 'export-ratings-json') exportUserData('ratings');
+            else if (target.id === 'export-all-data') exportUserData('all');
+            
+            // 设置保存和重置
+            else if (target.id === 'save-settings') savePersonalizationSettings();
+            else if (target.id === 'reset-settings') resetPersonalizationSettings();
+            else if (target.id === 'backup-now') createManualBackup();
+            else if (target.id === 'clear-all-data') clearAllUserData();
+            
+            // 自定义分类
+            else if (target.id === 'add-custom-category') addCustomCategory();
+        });
+        
+        // 文件导入
+        const importFile = document.getElementById('import-file');
+        if (importFile) {
+            importFile.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        importUserData(e.target.result);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+        }
+        
+        // 点击模态框外部关闭
+        [settingsModal, dataManagementModal].forEach(modal => {
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) {
+                        modal.classList.add('hidden');
+                    }
+                });
+            }
+        });
+        
+        // ESC键关闭模态框
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                const visibleModals = document.querySelectorAll('.fixed:not(.hidden)');
+                visibleModals.forEach(modal => {
+                    if (modal.id === 'settings-modal' || modal.id === 'data-management-modal') {
+                        modal.classList.add('hidden');
+                    }
+                });
+            }
+        });
+        
+        // 监听论文卡片的交互事件，用于记录阅读历史
+        document.addEventListener('click', (event) => {
+            const paperCard = event.target.closest('.paper-card');
+            if (paperCard) {
+                const paperId = paperCard.id.replace('card-', '');
+                if (paperId && state.allPapers.has(paperId)) {
+                    recordPaperInteraction(paperId, 'click');
+                }
+            }
+        });
+        
+        // 监听AI详情展开事件
+        document.addEventListener('click', (event) => {
+            if (event.target.closest('[data-action="toggle-ai-details"]')) {
+                const paperCard = event.target.closest('.paper-card');
+                if (paperCard) {
+                    const paperId = paperCard.id.replace('card-', '');
+                    recordPaperInteraction(paperId, 'ai_details_view');
+                }
+            }
+        });
+    }
+    
+    // 打开设置模态框
+    function openSettingsModal() {
+        loadSettingsValues();
+        updatePersonalizationUI();
+        settingsModal.classList.remove('hidden');
+    }
+    
+    // 打开数据管理模态框
+    function openDataManagementModal() {
+        updatePersonalizationUI();
+        updateLastBackupTime();
+        dataManagementModal.classList.remove('hidden');
+    }
+    
+    // 关闭模态框
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+    
+    // 加载设置值到UI
+    function loadSettingsValues() {
+        const themeSelect = document.getElementById('theme-preference');
+        const viewSelect = document.getElementById('view-preference');
+        const dailyTarget = document.getElementById('daily-target');
+        const weeklyTarget = document.getElementById('weekly-target');
+        const recommendationEnabled = document.getElementById('recommendation-enabled');
+        const tooltipsEnabled = document.getElementById('tooltips-enabled');
+        const keyboardNavEnabled = document.getElementById('keyboard-nav-enabled');
+        const autoBackupEnabled = document.getElementById('auto-backup-enabled');
+        const backupFrequency = document.getElementById('backup-frequency');
+        
+        if (themeSelect) themeSelect.value = state.userPreferences.preferredTheme || 'system';
+        if (viewSelect) viewSelect.value = state.userPreferences.defaultView || 'detailed';
+        if (dailyTarget) dailyTarget.value = state.userPreferences.readingGoals.dailyTarget || 5;
+        if (weeklyTarget) weeklyTarget.value = state.userPreferences.readingGoals.weeklyTarget || 30;
+        if (recommendationEnabled) recommendationEnabled.checked = state.userPreferences.recommendationEnabled;
+        if (tooltipsEnabled) tooltipsEnabled.checked = state.userPreferences.showTooltips;
+        if (keyboardNavEnabled) keyboardNavEnabled.checked = state.userPreferences.enableKeyboardNav;
+        if (autoBackupEnabled) autoBackupEnabled.checked = state.dataManagement.autoBackup;
+        if (backupFrequency) backupFrequency.value = state.dataManagement.backupInterval / (60 * 60 * 1000);
+    }
+    
+    // 保存个性化设置
+    function savePersonalizationSettings() {
+        const themeSelect = document.getElementById('theme-preference');
+        const viewSelect = document.getElementById('view-preference');
+        const dailyTarget = document.getElementById('daily-target');
+        const weeklyTarget = document.getElementById('weekly-target');
+        const recommendationEnabled = document.getElementById('recommendation-enabled');
+        const tooltipsEnabled = document.getElementById('tooltips-enabled');
+        const keyboardNavEnabled = document.getElementById('keyboard-nav-enabled');
+        const autoBackupEnabled = document.getElementById('auto-backup-enabled');
+        const backupFrequency = document.getElementById('backup-frequency');
+        
+        // 更新状态
+        if (themeSelect) state.userPreferences.preferredTheme = themeSelect.value;
+        if (viewSelect) state.userPreferences.defaultView = viewSelect.value;
+        if (dailyTarget) state.userPreferences.readingGoals.dailyTarget = parseInt(dailyTarget.value) || 5;
+        if (weeklyTarget) state.userPreferences.readingGoals.weeklyTarget = parseInt(weeklyTarget.value) || 30;
+        if (recommendationEnabled) state.userPreferences.recommendationEnabled = recommendationEnabled.checked;
+        if (tooltipsEnabled) state.userPreferences.showTooltips = tooltipsEnabled.checked;
+        if (keyboardNavEnabled) state.userPreferences.enableKeyboardNav = keyboardNavEnabled.checked;
+        if (autoBackupEnabled) state.dataManagement.autoBackup = autoBackupEnabled.checked;
+        if (backupFrequency) state.dataManagement.backupInterval = parseInt(backupFrequency.value) * 60 * 60 * 1000;
+        
+        // 应用设置
+        if (themeSelect) setTheme(themeSelect.value);
+        if (viewSelect) {
+            state.viewMode = viewSelect.value;
+            mainContainer.className = `${viewSelect.value}-view`;
+            updateViewModeUI();
+        }
+        
+        // 保存到本地存储
+        saveUserPreferences();
+        
+        showToast('设置已保存', 'success');
+        closeModal('settings-modal');
+    }
+    
+    // 重置个性化设置
+    function resetPersonalizationSettings() {
+        if (confirm('确定要重置所有个性化设置吗？这将恢复到默认设置。')) {
+            // 重置为默认值
+            state.userPreferences = {
+                hasSeenTutorial: false,
+                preferredTheme: 'system',
+                defaultView: 'detailed',
+                autoHideWelcome: false,
+                showTooltips: true,
+                enableKeyboardNav: true,
+                autoSaveInterval: 30000,
+                recommendationEnabled: true,
+                maxRecentPapers: 50,
+                customCategories: new Map(),
+                paperInteractions: new Map(),
+                readingGoals: {
+                    dailyTarget: 5,
+                    weeklyTarget: 30,
+                    currentStreak: 0,
+                    longestStreak: 0
+                }
+            };
+            
+            saveUserPreferences();
+            loadSettingsValues();
+            showToast('设置已重置', 'success');
+        }
+    }
+    
+    // 创建手动备份
+    function createManualBackup() {
+        exportUserData('all');
+        state.dataManagement.lastBackup = new Date().toISOString();
+        updateLastBackupTime();
+        showToast('备份已创建', 'success');
+    }
+    
+    // 清除所有用户数据
+    function clearAllUserData() {
+        if (confirm('警告：这将删除所有用户数据，包括收藏、笔记、标签、评分和设置。此操作不可逆。\n\n确定要继续吗？')) {
+            if (confirm('请再次确认：您真的要删除所有数据吗？')) {
+                // 清除所有数据
+                state.favorites.clear();
+                state.paperNotes.clear();
+                state.paperTags.clear();
+                state.paperRatings.clear();
+                state.favoriteGroups.clear();
+                state.readingHistory.viewedPapers.clear();
+                state.readingHistory.readingSessions = [];
+                state.readingHistory.preferences.clear();
+                state.readingHistory.recommendations = [];
+                
+                // 清除本地存储
+                localStorage.removeItem('arxiv_favorites');
+                localStorage.removeItem('arxiv_paper_notes');
+                localStorage.removeItem('arxiv_paper_tags');
+                localStorage.removeItem('arxiv_paper_ratings');
+                localStorage.removeItem('arxiv_user_preferences');
+                localStorage.removeItem('arxiv_reading_history');
+                localStorage.removeItem('arxiv_search_history');
+                
+                showToast('所有数据已清除', 'success');
+                updatePersonalizationUI();
+                closeModal('data-management-modal');
+            }
+        }
+    }
+    
+    // 添加自定义分类
+    function addCustomCategory() {
+        const nameInput = document.getElementById('new-category-name');
+        const keywordsInput = document.getElementById('new-category-keywords');
+        
+        if (nameInput && keywordsInput) {
+            const name = nameInput.value.trim();
+            const keywords = keywordsInput.value.trim().split(',').map(k => k.trim()).filter(Boolean);
+            
+            if (name && keywords.length > 0) {
+                state.userPreferences.customCategories.set(name, keywords);
+                saveUserPreferences();
+                updateCustomCategoriesList();
+                nameInput.value = '';
+                keywordsInput.value = '';
+                showToast(`已添加自定义分类：${name}`, 'success');
+            } else {
+                showToast('请输入分类名称和关键词', 'error');
+            }
+        }
+    }
+    
+    // 更新自定义分类列表
+    function updateCustomCategoriesList() {
+        const container = document.getElementById('custom-categories-list');
+        if (!container) return;
+        
+        if (state.userPreferences.customCategories.size === 0) {
+            container.innerHTML = '<p class="text-sm text-gray-500">暂无自定义分类</p>';
+            return;
+        }
+        
+        let html = '';
+        state.userPreferences.customCategories.forEach((keywords, name) => {
+            html += `
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <h5 class="font-medium text-gray-900">${name}</h5>
+                        <p class="text-sm text-gray-600">${keywords.join(', ')}</p>
+                    </div>
+                    <button onclick="removeCustomCategory('${name}')" 
+                            class="text-red-600 hover:text-red-800 transition-colors"
+                            title="删除分类">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                    </button>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    // 删除自定义分类
+    function removeCustomCategory(name) {
+        if (confirm(`确定要删除分类"${name}"吗？`)) {
+            state.userPreferences.customCategories.delete(name);
+            saveUserPreferences();
+            updateCustomCategoriesList();
+            showToast(`已删除分类：${name}`, 'success');
+        }
+    }
+    
+    // 更新最后备份时间显示
+    function updateLastBackupTime() {
+        const lastBackupEl = document.getElementById('last-backup-time');
+        if (lastBackupEl) {
+            if (state.dataManagement.lastBackup) {
+                const date = new Date(state.dataManagement.lastBackup);
+                lastBackupEl.textContent = date.toLocaleString();
+            } else {
+                lastBackupEl.textContent = '从未备份';
+            }
+        }
+    }
+    
+    // 显示推荐面板
+    function showRecommendationsPanel() {
+        const recommendations = generateRecommendations();
+        updateRecommendationsDisplay(recommendations);
+        recommendationsPanel.classList.remove('hidden');
+    }
+    
+    // 隐藏推荐面板
+    function hideRecommendationsPanel() {
+        recommendationsPanel.classList.add('hidden');
+    }
+    
+    // 更新推荐显示
+    function updateRecommendationsDisplay(recommendations) {
+        const content = document.getElementById('recommendations-content');
+        if (!content) return;
+        
+        if (!recommendations || recommendations.length === 0) {
+            content.innerHTML = `
+                <div class="text-center py-8 text-gray-500">
+                    <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                    </svg>
+                    <p class="text-sm">暂无推荐内容</p>
+                    <p class="text-xs text-gray-400 mt-1">继续阅读论文以获得个性化推荐</p>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = `<div class="space-y-3">`;
+        recommendations.forEach((rec, index) => {
+            const paper = rec.paper;
+            html += `
+                <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 cursor-pointer" 
+                     onclick="scrollToPaper('${paper.id}')">
+                    <h4 class="font-medium text-sm text-gray-900 mb-1 line-clamp-2">${paper.title || '无标题'}</h4>
+                    <p class="text-xs text-gray-600 mb-2">${(paper.authors || '').slice(0, 80)}${(paper.authors || '').length > 80 ? '...' : ''}</p>
+                    <div class="flex items-center justify-between">
+                        <div class="flex flex-wrap gap-1">
+                            ${(paper.categories || []).slice(0, 2).map(cat => 
+                                `<span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">${cat}</span>`
+                            ).join('')}
+                        </div>
+                        <span class="text-xs text-gray-500">匹配度: ${Math.round(rec.score * 10) / 10}</span>
+                    </div>
+                </div>
+            `;
+        });
+        html += `</div>`;
+        
+        content.innerHTML = html;
+    }
+    
+    // 滚动到指定论文
+    function scrollToPaper(paperId) {
+        const paperCard = document.getElementById(`card-${paperId}`);
+        if (paperCard) {
+            paperCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            paperCard.style.backgroundColor = 'var(--bg-tertiary)';
+            setTimeout(() => {
+                paperCard.style.backgroundColor = '';
+            }, 2000);
+            hideRecommendationsPanel();
         }
     }
     
@@ -4465,25 +6030,7 @@
         }, duration);
     }
     
-    // --- 用户偏好管理 ---
-    
-    // 加载用户偏好
-    function loadUserPreferences() {
-        const saved = localStorage.getItem('arxiv_user_preferences');
-        if (saved) {
-            try {
-                const preferences = JSON.parse(saved);
-                Object.assign(state.userPreferences, preferences);
-            } catch (e) {
-                console.warn('无法加载用户偏好设置:', e);
-            }
-        }
-    }
-    
-    // 保存用户偏好
-    function saveUserPreferences() {
-        localStorage.setItem('arxiv_user_preferences', JSON.stringify(state.userPreferences));
-    }
+
     
     // --- 智能推荐和个性化 ---
     
@@ -4734,6 +6281,161 @@
         showToast('已重置首次访问状态，刷新页面查看效果', 'success', 4000);
     }
     
+    // 使全局函数可用于HTML onclick事件
+    window.removeCustomCategory = removeCustomCategory;
+    window.scrollToPaper = scrollToPaper;
+    
+    // 自动备份功能
+    function setupAutoBackup() {
+        if (state.dataManagement.autoBackup) {
+            const backupInterval = state.dataManagement.backupInterval || 24 * 60 * 60 * 1000; // 默认24小时
+            
+            setInterval(() => {
+                const lastBackup = state.dataManagement.lastBackup;
+                const now = Date.now();
+                
+                if (!lastBackup || (now - new Date(lastBackup).getTime()) >= backupInterval) {
+                    exportUserData('all');
+                    state.dataManagement.lastBackup = new Date().toISOString();
+                    console.log('自动备份已完成');
+                }
+            }, 60 * 60 * 1000); // 每小时检查一次
+        }
+    }
+    
+    // 在页面初始化完成后设置自动备份
+    setTimeout(setupAutoBackup, 5000);
+    
+    // 增强的论文搜索功能，支持自定义分类
+    function searchWithCustomCategories(query) {
+        // 检查是否匹配自定义分类
+        for (const [categoryName, keywords] of state.userPreferences.customCategories) {
+            if (keywords.some(keyword => query.toLowerCase().includes(keyword.toLowerCase()))) {
+                // 执行基于自定义分类的搜索
+                performTagSearch(keywords.join(' OR '));
+                return;
+            }
+        }
+        
+        // 否则执行普通搜索
+        handleSearch();
+    }
+    
+    // 智能推荐的定期更新
+    function scheduleRecommendationUpdates() {
+        if (state.userPreferences.recommendationEnabled) {
+            setInterval(() => {
+                if (state.readingHistory.viewedPapers.size >= 3) {
+                    generateRecommendations();
+                }
+            }, 5 * 60 * 1000); // 每5分钟更新一次推荐
+        }
+    }
+    
+    // 在页面加载完成后启动推荐系统
+    setTimeout(scheduleRecommendationUpdates, 10000);
+    
+    // 个性化快捷键支持
+    function setupPersonalizedKeyboardShortcuts() {
+        if (state.userPreferences.enableKeyboardNav) {
+            document.addEventListener('keydown', (event) => {
+                // Ctrl/Cmd + K: 打开搜索
+                if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+                    event.preventDefault();
+                    searchInput.focus();
+                }
+                
+                // Ctrl/Cmd + Shift + S: 打开设置
+                if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'S') {
+                    event.preventDefault();
+                    openSettingsModal();
+                }
+                
+                // Ctrl/Cmd + Shift + D: 打开数据管理
+                if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'D') {
+                    event.preventDefault();
+                    openDataManagementModal();
+                }
+                
+                // Ctrl/Cmd + Shift + R: 显示推荐
+                if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key === 'R') {
+                    event.preventDefault();
+                    showRecommendationsPanel();
+                }
+                
+                // F: 搜索收藏夹
+                if (event.key === 'f' && !event.ctrlKey && !event.metaKey && event.target.tagName !== 'INPUT' && event.target.tagName !== 'TEXTAREA') {
+                    event.preventDefault();
+                    performTagSearch('favorites');
+                }
+            });
+        }
+    }
+    
+    // 初始化个性化快捷键
+    setTimeout(setupPersonalizedKeyboardShortcuts, 3000);
+    
+    // 导出引用格式的辅助函数
+    function formatPaperCitation(paper, format = 'apa') {
+        const authors = paper.authors ? paper.authors.split(',').map(a => a.trim()).slice(0, 3) : ['Unknown'];
+        const year = paper.date ? paper.date.split('-')[0] : new Date().getFullYear();
+        const title = paper.title || 'Untitled';
+        
+        switch (format) {
+            case 'apa':
+                const authorList = authors.length > 3 ? `${authors[0]}, et al.` : authors.join(', ');
+                return `${authorList} (${year}). ${title}. arXiv preprint arXiv:${paper.id}.`;
+                
+            case 'mla':
+                const mlaAuthor = authors[0] ? authors[0].split(' ').reverse().join(', ') : 'Unknown';
+                return `${mlaAuthor}. "${title}" arXiv preprint arXiv:${paper.id} (${year}).`;
+                
+            case 'chicago':
+                return `${authors.join(', ')}. "${title}" arXiv preprint arXiv:${paper.id} (${year}).`;
+                
+            default:
+                return `${authors.join(', ')} - ${title} (${year}) - arXiv:${paper.id}`;
+        }
+    }
+    
+    // 增强的分享功能
+    function enhancedSharePaper(paperId, format = 'link') {
+        const paper = state.allPapers.get(paperId);
+        if (!paper) return;
+        
+        let shareText = '';
+        
+        switch (format) {
+            case 'citation':
+                shareText = formatPaperCitation(paper, 'apa');
+                break;
+            case 'formatted':
+                shareText = `📖 ${paper.title}\n👥 ${paper.authors || 'Unknown'}\n🔗 https://arxiv.org/abs/${paper.id}\n\n📄 ${(paper.abstract || '').slice(0, 200)}...`;
+                break;
+            case 'simple':
+                shareText = `${paper.title} - https://arxiv.org/abs/${paper.id}`;
+                break;
+            default:
+                shareText = `https://arxiv.org/abs/${paper.id}`;
+        }
+        
+        if (navigator.share) {
+            navigator.share({
+                title: paper.title,
+                text: shareText,
+                url: `https://arxiv.org/abs/${paper.id}`
+            });
+        } else {
+            navigator.clipboard.writeText(shareText).then(() => {
+                showToast('分享内容已复制到剪贴板');
+            });
+        }
+        
+        // 记录分享行为
+        recordPaperInteraction(paperId, 'share');
+    }
+    
+    // 重写原有的sharePaper函数以使用增强版本
     // 开发者工具：在控制台暴露一些有用的函数
     if (typeof window !== 'undefined') {
         window.arxivDevTools = {
@@ -4741,13 +6443,386 @@
             startTutorial: startTutorial,
             showTooltip: showFeatureTooltip,
             resetTutorial: resetTutorial,
-            state: state
+            state: state,
+            // 个性化功能调试接口
+            personalization: {
+                exportData: exportUserData,
+                importData: importUserData,
+                generateRecommendations: generateRecommendations,
+                recordInteraction: recordPaperInteraction,
+                updateStats: updatePersonalizationUI,
+                clearAllData: clearAllUserData,
+                showRecommendations: showRecommendationsPanel,
+                addCategory: addCustomCategory,
+                removeCategory: removeCustomCategory,
+                getReadingStats: () => ({
+                    totalPapers: state.readingHistory.viewedPapers.size,
+                    favorites: state.favorites.size,
+                    notes: state.paperNotes.size,
+                    tags: state.paperTags.size,
+                    ratings: state.paperRatings.size,
+                    currentStreak: state.userPreferences.readingGoals.currentStreak,
+                    longestStreak: state.userPreferences.readingGoals.longestStreak
+                }),
+                simulateReading: (count = 10) => {
+                    // 模拟阅读行为用于测试
+                    const paperIds = Array.from(state.allPapers.keys()).slice(0, count);
+                    paperIds.forEach((id, index) => {
+                        setTimeout(() => {
+                            recordPaperInteraction(id, 'view', Math.random() * 30000 + 5000);
+                        }, index * 100);
+                    });
+                    console.log(`模拟了${count}篇论文的阅读行为`);
+                }
+            }
         };
         console.log('🛠️ 开发者工具已加载，使用 window.arxivDevTools 访问');
+        console.log('📊 个性化功能调试: window.arxivDevTools.personalization');
     }
     
     document.addEventListener('DOMContentLoaded', init);
 </script>
+
+<!-- 个性化设置模态框 -->
+<div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-gray-200 p-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-900">个人设置</h2>
+                <button id="close-settings-modal" class="text-gray-400 hover:text-gray-600 transition-colors" title="关闭设置面板" aria-label="关闭设置面板">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-6 space-y-8">
+            <!-- 基础偏好设置 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">基础偏好</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">默认主题</label>
+                        <select id="theme-preference" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" title="选择默认主题" aria-label="选择默认主题">
+                            <option value="light">浅色模式</option>
+                            <option value="dark">深色模式</option>
+                            <option value="system">跟随系统</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">默认视图</label>
+                        <select id="view-preference" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" title="选择默认视图" aria-label="选择默认视图">
+                            <option value="detailed">详细视图</option>
+                            <option value="compact">紧凑视图</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 阅读目标设置 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">阅读目标</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">每日阅读目标（篇）</label>
+                        <input type="number" id="daily-target" min="1" max="50" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">每周阅读目标（篇）</label>
+                        <input type="number" id="weekly-target" min="1" max="300" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="30">
+                    </div>
+                </div>
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-medium text-blue-900">当前连续阅读天数</p>
+                            <p class="text-2xl font-bold text-blue-600" id="current-streak">0 天</p>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-blue-900">最长连续记录</p>
+                            <p class="text-2xl font-bold text-blue-600" id="longest-streak">0 天</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 个性化推荐 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">智能推荐</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">启用智能推荐</h4>
+                            <p class="text-sm text-gray-500">基于您的阅读历史和偏好推荐相关论文</p>
+                        </div>
+                        <input type="checkbox" id="recommendation-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" title="启用智能推荐" aria-label="启用智能推荐">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">显示工具提示</h4>
+                            <p class="text-sm text-gray-500">在功能按钮上显示说明提示</p>
+                        </div>
+                        <input type="checkbox" id="tooltips-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" title="显示工具提示" aria-label="显示工具提示">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">键盘导航</h4>
+                            <p class="text-sm text-gray-500">启用键盘快捷键操作</p>
+                        </div>
+                        <input type="checkbox" id="keyboard-nav-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" title="启用键盘导航" aria-label="启用键盘导航">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 自定义分类管理 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">自定义分类</h3>
+                <div class="space-y-4">
+                    <div class="flex gap-2">
+                        <input type="text" id="new-category-name" placeholder="分类名称" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <input type="text" id="new-category-keywords" placeholder="关键词 (逗号分隔)" class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <button id="add-custom-category" class="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">添加</button>
+                    </div>
+                    <div id="custom-categories-list" class="space-y-2 max-h-48 overflow-y-auto">
+                        <!-- 自定义分类列表 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 阅读统计 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">阅读统计</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                        <p class="text-2xl font-bold text-green-600" id="total-papers-read">0</p>
+                        <p class="text-sm text-green-800">总阅读数</p>
+                    </div>
+                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                        <p class="text-2xl font-bold text-blue-600" id="total-favorites">0</p>
+                        <p class="text-sm text-blue-800">收藏数量</p>
+                    </div>
+                    <div class="text-center p-4 bg-purple-50 rounded-lg">
+                        <p class="text-2xl font-bold text-purple-600" id="total-notes">0</p>
+                        <p class="text-sm text-purple-800">笔记数量</p>
+                    </div>
+                    <div class="text-center p-4 bg-orange-50 rounded-lg">
+                        <p class="text-2xl font-bold text-orange-600" id="avg-rating">0.0</p>
+                        <p class="text-sm text-orange-800">平均评分</p>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h4 class="text-sm font-medium text-gray-900 mb-2">最常阅读的分类</h4>
+                    <div id="reading-categories-chart" class="space-y-2">
+                        <!-- 分类统计图表 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200">
+            <div class="flex justify-end gap-3">
+                <button id="reset-settings" class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">重置设置</button>
+                <button id="save-settings" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">保存设置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 数据管理模态框 -->
+<div id="data-management-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white border-b border-gray-200 p-6">
+            <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-gray-900">数据管理</h2>
+                <button id="close-data-modal" class="text-gray-400 hover:text-gray-600 transition-colors" title="关闭数据管理面板" aria-label="关闭数据管理面板">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div class="p-6 space-y-8">
+            <!-- 数据导出 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">数据导出</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-4">
+                        <h4 class="font-medium text-gray-900">收藏夹导出</h4>
+                        <div class="space-y-2">
+                            <button id="export-favorites-json" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">JSON 格式</span>
+                                    <span class="text-sm text-gray-500">结构化数据</span>
+                                </div>
+                            </button>
+                            <button id="export-favorites-csv" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">CSV 格式</span>
+                                    <span class="text-sm text-gray-500">表格数据</span>
+                                </div>
+                            </button>
+                            <button id="export-favorites-bibtex" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">BibTeX 格式</span>
+                                    <span class="text-sm text-gray-500">学术引用</span>
+                                </div>
+                            </button>
+                            <button id="export-favorites-markdown" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">Markdown 格式</span>
+                                    <span class="text-sm text-gray-500">文档格式</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <h4 class="font-medium text-gray-900">笔记导出</h4>
+                        <div class="space-y-2">
+                            <button id="export-notes-json" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">笔记 (JSON)</span>
+                                    <span class="text-sm text-gray-500">包含所有笔记</span>
+                                </div>
+                            </button>
+                            <button id="export-tags-json" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">标签 (JSON)</span>
+                                    <span class="text-sm text-gray-500">用户标签系统</span>
+                                </div>
+                            </button>
+                            <button id="export-ratings-json" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium">评分 (JSON)</span>
+                                    <span class="text-sm text-gray-500">论文评分数据</span>
+                                </div>
+                            </button>
+                            <button id="export-all-data" class="w-full p-3 text-left border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors bg-blue-50 border-blue-300">
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium text-blue-700">完整数据备份</span>
+                                    <span class="text-sm text-blue-600">所有用户数据</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 数据导入 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">数据导入</h3>
+                <div class="space-y-4">
+                    <div class="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                        <div class="text-center">
+                            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                                <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            </svg>
+                            <div class="mt-4">
+                                <label for="import-file" class="cursor-pointer">
+                                    <span class="mt-2 block text-sm font-medium text-gray-900">
+                                        点击上传数据文件
+                                    </span>
+                                    <span class="mt-1 block text-xs text-gray-500">
+                                        支持 JSON 格式的备份文件
+                                    </span>
+                                </label>
+                                <input id="import-file" type="file" accept=".json" class="sr-only">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-sm text-gray-600">
+                        <p><strong>注意：</strong>导入数据将会覆盖现有的用户数据，请确保已备份当前数据。</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 自动备份设置 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">自动备份</h3>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-medium text-gray-900">启用自动备份</h4>
+                            <p class="text-sm text-gray-500">定期自动备份您的个人数据</p>
+                        </div>
+                        <input type="checkbox" id="auto-backup-enabled" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" title="启用自动备份" aria-label="启用自动备份">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">备份频率</label>
+                        <select id="backup-frequency" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" title="选择备份频率" aria-label="选择备份频率">
+                            <option value="24">每天</option>
+                            <option value="168">每周</option>
+                            <option value="720">每月</option>
+                        </select>
+                    </div>
+                    <div class="p-4 bg-gray-50 rounded-lg">
+                        <p class="text-sm text-gray-600">
+                            <strong>上次备份：</strong> <span id="last-backup-time">从未备份</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 数据统计 -->
+            <div>
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">存储统计</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="text-lg font-bold text-gray-600" id="storage-favorites">0</p>
+                        <p class="text-xs text-gray-500">收藏夹</p>
+                    </div>
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="text-lg font-bold text-gray-600" id="storage-notes">0</p>
+                        <p class="text-xs text-gray-500">笔记</p>
+                    </div>
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="text-lg font-bold text-gray-600" id="storage-tags">0</p>
+                        <p class="text-xs text-gray-500">标签</p>
+                    </div>
+                    <div class="text-center p-4 bg-gray-50 rounded-lg">
+                        <p class="text-lg font-bold text-gray-600" id="storage-size">0 KB</p>
+                        <p class="text-xs text-gray-500">总存储</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200">
+            <div class="flex justify-between">
+                <button id="clear-all-data" class="px-4 py-2 text-red-700 bg-red-50 border border-red-300 rounded-lg hover:bg-red-100 transition-colors">清除所有数据</button>
+                <div class="flex gap-3">
+                    <button id="backup-now" class="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">立即备份</button>
+                    <button id="close-data-management" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 智能推荐面板 -->
+<div id="recommendations-panel" class="fixed top-20 right-4 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-40 hidden">
+    <div class="p-4 border-b border-gray-200">
+        <div class="flex justify-between items-center">
+            <h3 class="text-lg font-semibold text-gray-900">智能推荐</h3>
+            <button id="close-recommendations" class="text-gray-400 hover:text-gray-600" title="关闭推荐面板" aria-label="关闭推荐面板">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div id="recommendations-content" class="p-4 max-h-96 overflow-y-auto">
+        <div class="text-center py-8 text-gray-500">
+            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+            </svg>
+            <p class="text-sm">暂无推荐内容</p>
+            <p class="text-xs text-gray-400 mt-1">继续阅读论文以获得个性化推荐</p>
+        </div>
+    </div>
+</div>
 
 </body>
 </html>
