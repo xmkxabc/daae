@@ -2318,9 +2318,43 @@
                 <div id="search-history-items"></div>
             </div>
             
-            <input type="text" id="searchInput" placeholder="搜索论文或点击分类/关键词进行筛选..." 
-                   class="w-full p-4 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                   autocomplete="off">
+            <!-- 搜索区域和日期筛选 -->
+            <div class="relative flex gap-3 items-center">
+                <div class="relative flex-1">
+                    <input type="text" id="searchInput" placeholder="搜索论文或点击分类/关键词进行筛选..." 
+                           class="w-full p-4 pl-12 pr-16 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                           autocomplete="off">
+                    <svg class="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <button id="date-filter-toggle" class="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="日期筛选">
+                        <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 日期筛选快捷按钮 -->
+            <div id="date-filter-panel" class="hidden mt-3">
+                <div class="flex flex-wrap gap-2">
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="today">今日</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="week">本周</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="month">本月</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="custom">自定义</button>
+                </div>
+            </div>
+            
+            <!-- 当前筛选条件显示 -->
+            <div id="active-filters" class="mt-3 hidden">
+                <div class="flex flex-wrap gap-2">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">当前筛选:</span>
+                    <span id="date-filter-display" class="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full text-sm hidden">
+                        <span class="date-range-text"></span>
+                        <button class="ml-2 hover:text-blue-600" onclick="clearDateFilter()">&times;</button>
+                    </span>
+                </div>
+            </div>
                    
             <!-- 新增：搜索建议下拉框 -->
             <div id="search-suggestions" class="search-suggestions">
@@ -2586,48 +2620,40 @@
     const searchSuggestions = document.getElementById('search-suggestions');
     const searchHistoryItems = document.getElementById('search-history-items');
     const readingProgressBar = document.getElementById('reading-progress-bar');
-    
-    // 移动端元素引用
-    const mobileNavToggle = document.getElementById('mobile-nav-toggle');
-    const mobileNavContent = document.getElementById('mobile-nav-content');
-    const hamburgerIcon = document.getElementById('hamburger-icon');
-    const closeIcon = document.getElementById('close-icon');
-    const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
-    const swipeIndicatorLeft = document.getElementById('swipe-indicator-left');
     const swipeIndicatorRight = document.getElementById('swipe-indicator-right');
     
-    // 用户引导元素引用
-    const tutorialBtn = document.getElementById('tutorial-btn');
-    const helpBtn = document.getElementById('help-btn');
-    const welcomeCard = document.getElementById('welcome-card');
-    const quickActions = document.getElementById('quick-actions');
-    const popularKeywords = document.getElementById('popular-keywords');
-    const tutorialOverlay = document.getElementById('tutorial-overlay');
-    const tutorialCard = document.getElementById('tutorial-card');
-    const tutorialHighlight = document.getElementById('tutorial-highlight');
-    const tutorialProgress = document.getElementById('tutorial-progress');
-    const tutorialTitle = document.getElementById('tutorial-title');
-    const tutorialContent = document.getElementById('tutorial-content');
-    const tutorialFeatures = document.getElementById('tutorial-features');
-    const tutorialPrevBtn = document.getElementById('tutorial-prev');
-    const tutorialNextBtn = document.getElementById('tutorial-next');
-    const tutorialSkipBtn = document.getElementById('tutorial-skip');
-    const tutorialProgressText = document.getElementById('tutorial-progress-text');
-    const tutorialProgressFill = document.getElementById('tutorial-progress-fill');
-    const featureTooltip = document.getElementById('feature-tooltip');
-    const firstVisitIndicator = document.getElementById('first-visit-indicator');
-    const startTutorialBtn = document.getElementById('start-tutorial');
-    const exploreNowBtn = document.getElementById('explore-now');
+    // 用户引导元素引用 - 使用安全的获取方式
+    const tutorialBtn = document.getElementById('tutorial-btn') || null;
+    const helpBtn = document.getElementById('help-btn') || null;
+    const welcomeCard = document.getElementById('welcome-card') || null;
+    const quickActions = document.getElementById('quick-actions') || null;
+    const popularKeywords = document.getElementById('popular-keywords') || null;
+    const tutorialOverlay = document.getElementById('tutorial-overlay') || null;
+    const tutorialCard = document.getElementById('tutorial-card') || null;
+    const tutorialHighlight = document.getElementById('tutorial-highlight') || null;
+    const tutorialProgress = document.getElementById('tutorial-progress') || null;
+    const tutorialTitle = document.getElementById('tutorial-title') || null;
+    const tutorialContent = document.getElementById('tutorial-content') || null;
+    const tutorialFeatures = document.getElementById('tutorial-features') || null;
+    const tutorialPrevBtn = document.getElementById('tutorial-prev') || null;
+    const tutorialNextBtn = document.getElementById('tutorial-next') || null;
+    const tutorialSkipBtn = document.getElementById('tutorial-skip') || null;
+    const tutorialProgressText = document.getElementById('tutorial-progress-text') || null;
+    const tutorialProgressFill = document.getElementById('tutorial-progress-fill') || null;
+    const featureTooltip = document.getElementById('feature-tooltip') || null;
+    const firstVisitIndicator = document.getElementById('first-visit-indicator') || null;
+    const startTutorialBtn = document.getElementById('start-tutorial') || null;
+    const exploreNowBtn = document.getElementById('explore-now') || null;
     
-    // 个性化功能元素引用
-    const settingsBtn = document.getElementById('settings-btn');
-    const dataManagementBtn = document.getElementById('data-management-btn');
-    const settingsModal = document.getElementById('settings-modal');
-    const dataManagementModal = document.getElementById('data-management-modal');
-    const recommendationsPanel = document.getElementById('recommendations-panel');
-    const closeSettingsModal = document.getElementById('close-settings-modal');
-    const closeDataModal = document.getElementById('close-data-modal');
-    const closeRecommendations = document.getElementById('close-recommendations');
+    // 个性化功能元素引用 - 使用安全的获取方式
+    const settingsBtn = document.getElementById('settings-btn') || null;
+    const dataManagementBtn = document.getElementById('data-management-btn') || null;
+    const settingsModal = document.getElementById('settings-modal') || null;
+    const dataManagementModal = document.getElementById('data-management-modal') || null;
+    const recommendationsPanel = document.getElementById('recommendations-panel') || null;
+    const closeSettingsModal = document.getElementById('close-settings-modal') || null;
+    const closeDataModal = document.getElementById('close-data-modal') || null;
+    const closeRecommendations = document.getElementById('close-recommendations') || null;
 
     // --- 性能监控和内存管理 ---
     const performance = {
@@ -2895,6 +2921,270 @@
         }, 300);
     }
     
+    // --- 日期筛选功能 (新增) ---
+    // 日期筛选状态
+    let currentDateFilter = {
+        startDate: null,
+        endDate: null,
+        period: null
+    };
+
+    // 日期筛选相关函数
+    function setupDateFilter() {
+        console.log('开始初始化日期筛选功能...');
+        
+        try {
+            // 获取DOM元素 (在函数内部获取，确保DOM已加载)
+            const dateFilterToggle = document.getElementById('date-filter-toggle');
+            const dateFilterPanel = document.getElementById('date-filter-panel');
+            const dateFilterModal = document.getElementById('date-filter-modal');
+            const startDateInput = document.getElementById('start-date');
+            const endDateInput = document.getElementById('end-date');
+            const activeFilters = document.getElementById('active-filters');
+            const dateFilterDisplay = document.getElementById('date-filter-display');
+
+            console.log('日期筛选DOM元素检查:', {
+                dateFilterToggle: !!dateFilterToggle,
+                dateFilterPanel: !!dateFilterPanel,
+                dateFilterModal: !!dateFilterModal,
+                startDateInput: !!startDateInput,
+                endDateInput: !!endDateInput
+            });
+
+            // 检查关键元素是否存在
+            if (!dateFilterToggle || !dateFilterPanel || !dateFilterModal) {
+                console.warn('日期筛选关键元素未找到，跳过日期筛选功能初始化');
+                return;
+            }
+
+            // 切换日期筛选面板
+            dateFilterToggle.addEventListener('click', () => {
+                console.log('切换日期筛选面板');
+                dateFilterPanel.classList.toggle('hidden');
+            });
+
+            // 快捷日期筛选
+            const quickFilterBtns = document.querySelectorAll('.date-quick-filter');
+            console.log('找到快捷筛选按钮数量:', quickFilterBtns.length);
+            
+            quickFilterBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const period = e.target.dataset.period;
+                    console.log('点击快捷筛选:', period);
+                    
+                    if (period === 'custom') {
+                        dateFilterModal.classList.remove('hidden');
+                    } else {
+                        applyQuickDateFilter(period);
+                    }
+                });
+            });
+
+            // 模态框事件
+            const closeModalBtn = document.getElementById('close-date-modal');
+            const applyFilterBtn = document.getElementById('apply-date-filter');
+            const clearFilterBtn = document.getElementById('clear-date-filter');
+
+            console.log('模态框按钮检查:', {
+                closeModalBtn: !!closeModalBtn,
+                applyFilterBtn: !!applyFilterBtn,
+                clearFilterBtn: !!clearFilterBtn
+            });
+
+            if (closeModalBtn) {
+                closeModalBtn.addEventListener('click', () => {
+                    console.log('关闭日期筛选模态框');
+                    dateFilterModal.classList.add('hidden');
+                });
+            }
+
+            if (applyFilterBtn) {
+                applyFilterBtn.addEventListener('click', () => {
+                    const startDate = startDateInput ? startDateInput.value : '';
+                    const endDate = endDateInput ? endDateInput.value : '';
+                    
+                    console.log('应用自定义日期筛选:', { startDate, endDate });
+                    
+                    if (startDate && endDate) {
+                        if (new Date(startDate) > new Date(endDate)) {
+                            showToast('开始日期不能晚于结束日期', 'error');
+                            return;
+                        }
+                        
+                        applyCustomDateFilter(startDate, endDate);
+                        dateFilterModal.classList.add('hidden');
+                    } else {
+                        showToast('请选择开始和结束日期', 'warning');
+                    }
+                });
+            }
+
+            if (clearFilterBtn) {
+                clearFilterBtn.addEventListener('click', () => {
+                    console.log('清除日期筛选');
+                    clearDateFilter();
+                    dateFilterModal.classList.add('hidden');
+                });
+            }
+
+            // 点击外部关闭模态框
+            if (dateFilterModal) {
+                dateFilterModal.addEventListener('click', (e) => {
+                    if (e.target === dateFilterModal) {
+                        console.log('点击外部关闭日期筛选模态框');
+                        dateFilterModal.classList.add('hidden');
+                    }
+                });
+            }
+            
+            console.log('日期筛选功能初始化完成');
+        } catch (error) {
+            console.error('初始化日期筛选功能时出错:', error);
+        }
+    }
+
+    function applyQuickDateFilter(period) {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        const date = today.getDate();
+        
+        let startDate, endDate, displayText;
+
+        switch (period) {
+            case 'today':
+                startDate = endDate = formatDate(today);
+                displayText = '今日';
+                break;
+            case 'week':
+                const weekStart = new Date(today);
+                weekStart.setDate(date - today.getDay());
+                startDate = formatDate(weekStart);
+                endDate = formatDate(today);
+                displayText = '本周';
+                break;
+            case 'month':
+                const monthStart = new Date(year, month, 1);
+                startDate = formatDate(monthStart);
+                endDate = formatDate(today);
+                displayText = '本月';
+                break;
+        }
+
+        currentDateFilter = { startDate, endDate, period };
+        updateDateFilterDisplay(displayText);
+        filterPapersByDate();
+        dateFilterPanel.classList.add('hidden');
+        showToast(`已应用${displayText}筛选`);
+    }
+
+    function applyCustomDateFilter(startDate, endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        
+        currentDateFilter = { 
+            startDate, 
+            endDate, 
+            period: 'custom' 
+        };
+        
+        const displayText = `${start.getMonth() + 1}/${start.getDate()} - ${end.getMonth() + 1}/${end.getDate()}`;
+        updateDateFilterDisplay(displayText);
+        filterPapersByDate();
+        showToast('已应用自定义日期筛选');
+    }
+
+    function clearDateFilter() {
+        currentDateFilter = { startDate: null, endDate: null, period: null };
+        updateDateFilterDisplay('');
+        
+        // 安全地清除输入值
+        const startDateInput = document.getElementById('start-date');
+        const endDateInput = document.getElementById('end-date');
+        if (startDateInput) startDateInput.value = '';
+        if (endDateInput) endDateInput.value = '';
+        
+        // 重新执行当前搜索或显示所有论文
+        if (state.currentQuery) {
+            handleSearch();
+        } else {
+            // 如果没有搜索词，重新加载当前月份
+            const currentMonthPapers = Array.from(state.allPapers.values())
+                .filter(p => p.id.startsWith(state.manifest.availableMonths[state.currentMonthIndex]?.replace('-', '').substring(2) || ''))
+                .sort((a, b) => b.date.localeCompare(a.date));
+            renderPapers(currentMonthPapers);
+        }
+        
+        showToast('已清除日期筛选');
+    }
+
+    function updateDateFilterDisplay(text) {
+        const dateFilterDisplay = document.getElementById('date-filter-display');
+        const activeFilters = document.getElementById('active-filters');
+        
+        if (!dateFilterDisplay || !activeFilters) return;
+        
+        if (text) {
+            const textElement = dateFilterDisplay.querySelector('.date-range-text');
+            if (textElement) textElement.textContent = text;
+            dateFilterDisplay.classList.remove('hidden');
+            activeFilters.classList.remove('hidden');
+        } else {
+            dateFilterDisplay.classList.add('hidden');
+            activeFilters.classList.add('hidden');
+        }
+    }
+
+    function filterPapersByDate() {
+        if (!currentDateFilter.startDate || !currentDateFilter.endDate) return;
+
+        const startDate = new Date(currentDateFilter.startDate);
+        const endDate = new Date(currentDateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999); // 包含结束日期的全天
+
+        let filteredPapers;
+        
+        if (state.isSearchMode && state.currentSearchResults.length > 0) {
+            // 如果在搜索模式，筛选搜索结果
+            filteredPapers = state.currentSearchResults.filter(paper => {
+                const paperDate = new Date(paper.date);
+                return paperDate >= startDate && paperDate <= endDate;
+            });
+            
+            renderSearchResults(filteredPapers, state.currentQuery);
+        } else {
+            // 筛选所有论文
+            filteredPapers = Array.from(state.allPapers.values()).filter(paper => {
+                const paperDate = new Date(paper.date);
+                return paperDate >= startDate && paperDate <= endDate;
+            }).sort((a, b) => b.date.localeCompare(a.date));
+            
+            renderPapers(filteredPapers);
+        }
+
+        showToast(`找到 ${filteredPapers.length} 篇符合日期条件的论文`);
+    }
+
+    function formatDate(date) {
+        return date.toISOString().split('T')[0];
+    }
+
+    // 修改搜索函数以支持日期筛选
+    function applyDateFilterToResults(papers) {
+        if (!currentDateFilter.startDate || !currentDateFilter.endDate) {
+            return papers;
+        }
+
+        const startDate = new Date(currentDateFilter.startDate);
+        const endDate = new Date(currentDateFilter.endDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        return papers.filter(paper => {
+            const paperDate = new Date(paper.date);
+            return paperDate >= startDate && paperDate <= endDate;
+        });
+    }
+
     // --- 深色模式功能 ---
     function initializeTheme() {
         const savedTheme = localStorage.getItem('arxiv_theme') || 
@@ -3078,16 +3368,45 @@
     }
     
     function setupMobileNavigation() {
-        if (mobileNavToggle && mobileNavContent) {
-            mobileNavToggle.addEventListener('click', toggleMobileMenu);
+        console.log('开始初始化移动端导航...');
+        
+        try {
+            // 在函数内部获取DOM元素
+            const mobileNavToggle = document.getElementById('mobile-nav-toggle');
+            const mobileNavContent = document.getElementById('mobile-nav-content');
+            const hamburgerIcon = document.getElementById('hamburger-icon');
+            const closeIcon = document.getElementById('close-icon');
             
-            // 点击外部关闭菜单
-            document.addEventListener('click', (e) => {
-                if (state.mobile.isMenuOpen && 
-                    !quickNavContainer.contains(e.target)) {
-                    closeMobileMenu();
-                }
+            console.log('移动端导航DOM元素检查:', {
+                mobileNavToggle: !!mobileNavToggle,
+                mobileNavContent: !!mobileNavContent,
+                hamburgerIcon: !!hamburgerIcon,
+                closeIcon: !!closeIcon
             });
+            
+            if (mobileNavToggle && mobileNavContent) {
+                mobileNavToggle.addEventListener('click', () => {
+                    console.log('点击移动端导航切换按钮');
+                    toggleMobileMenu();
+                });
+                
+                // 点击外部关闭菜单
+                document.addEventListener('click', (e) => {
+                    const quickNavContainer = document.getElementById('quick-nav-container');
+                    if (state.mobile.isMenuOpen && 
+                        quickNavContainer && 
+                        !quickNavContainer.contains(e.target)) {
+                        console.log('点击外部关闭移动端菜单');
+                        closeMobileMenu();
+                    }
+                });
+                
+                console.log('移动端导航初始化完成');
+            } else {
+                console.warn('移动端导航元素未找到，跳过移动端导航初始化');
+            }
+        } catch (error) {
+            console.error('初始化移动端导航时出错:', error);
         }
     }
     
@@ -3102,6 +3421,10 @@
     }
     
     function updateMobileMenuState() {
+        const mobileNavContent = document.getElementById('mobile-nav-content');
+        const hamburgerIcon = document.getElementById('hamburger-icon');
+        const closeIcon = document.getElementById('close-icon');
+        
         if (mobileNavContent && hamburgerIcon && closeIcon) {
             if (state.mobile.isMenuOpen) {
                 mobileNavContent.classList.add('active');
@@ -3116,51 +3439,62 @@
     }
     
     function setupTouchGestures() {
-        let touchStartX = 0;
-        let touchEndX = 0;
-        let touchStartY = 0;
-        let touchEndY = 0;
-        let isVerticalScroll = false;
+        console.log('开始初始化触摸手势...');
         
-        mainContainer.addEventListener('touchstart', (e) => {
-            touchStartX = e.changedTouches[0].screenX;
-            touchStartY = e.changedTouches[0].screenY;
-            state.mobile.touchStartX = touchStartX;
-            state.mobile.touchStartY = touchStartY;
-            isVerticalScroll = false;
-        }, { passive: true });
+        try {
+            // 使用全局的mainContainer，如果不存在则回退到body
+            const touchContainer = mainContainer || document.body;
+            
+            let touchStartX = 0;
+            let touchEndX = 0;
+            let touchStartY = 0;
+            let touchEndY = 0;
+            let isVerticalScroll = false;
+            
+            touchContainer.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+                touchStartY = e.changedTouches[0].screenY;
+                state.mobile.touchStartX = touchStartX;
+                state.mobile.touchStartY = touchStartY;
+                isVerticalScroll = false;
+            }, { passive: true });
         
-        mainContainer.addEventListener('touchmove', (e) => {
-            const currentX = e.changedTouches[0].screenX;
-            const currentY = e.changedTouches[0].screenY;
+            touchContainer.addEventListener('touchmove', (e) => {
+                const currentX = e.changedTouches[0].screenX;
+                const currentY = e.changedTouches[0].screenY;
+                
+                // 检查是否是垂直滚动
+                const deltaY = Math.abs(currentY - touchStartY);
+                const deltaX = Math.abs(currentX - touchStartX);
+                
+                if (deltaY > deltaX && deltaY > 10) {
+                    isVerticalScroll = true;
+                }
+                
+                // 显示滑动提示
+                if (!isVerticalScroll && deltaX > 20) {
+                    const direction = currentX > touchStartX ? 'right' : 'left';
+                    showSwipeIndicator(direction);
+                }
+            }, { passive: true });
             
-            // 检查是否是垂直滚动
-            const deltaY = Math.abs(currentY - touchStartY);
-            const deltaX = Math.abs(currentX - touchStartX);
+            touchContainer.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                touchEndY = e.changedTouches[0].screenY;
+                state.mobile.touchEndX = touchEndX;
+                state.mobile.touchEndY = touchEndY;
+                
+                hideSwipeIndicators();
+                
+                if (!isVerticalScroll) {
+                    handleSwipeGesture();
+                }
+            }, { passive: true });
             
-            if (deltaY > deltaX && deltaY > 10) {
-                isVerticalScroll = true;
-            }
-            
-            // 显示滑动提示
-            if (!isVerticalScroll && deltaX > 20) {
-                const direction = currentX > touchStartX ? 'right' : 'left';
-                showSwipeIndicator(direction);
-            }
-        }, { passive: true });
-        
-        mainContainer.addEventListener('touchend', (e) => {
-            touchEndX = e.changedTouches[0].screenX;
-            touchEndY = e.changedTouches[0].screenY;
-            state.mobile.touchEndX = touchEndX;
-            state.mobile.touchEndY = touchEndY;
-            
-            hideSwipeIndicators();
-            
-            if (!isVerticalScroll) {
-                handleSwipeGesture();
-            }
-        }, { passive: true });
+            console.log('触摸手势初始化完成');
+        } catch (error) {
+            console.error('初始化触摸手势时出错:', error);
+        }
     }
     
     function handleSwipeGesture() {
@@ -3199,6 +3533,8 @@
     }
     
     function showSwipeIndicator(direction) {
+        const swipeIndicatorLeft = document.getElementById('swipe-indicator-left');
+        const swipeIndicatorRight = document.getElementById('swipe-indicator-right');
         const indicator = direction === 'left' ? swipeIndicatorLeft : swipeIndicatorRight;
         if (indicator) {
             indicator.classList.add('show');
@@ -3206,36 +3542,57 @@
     }
     
     function hideSwipeIndicators() {
+        const swipeIndicatorLeft = document.getElementById('swipe-indicator-left');
+        const swipeIndicatorRight = document.getElementById('swipe-indicator-right');
         if (swipeIndicatorLeft) swipeIndicatorLeft.classList.remove('show');
         if (swipeIndicatorRight) swipeIndicatorRight.classList.remove('show');
     }
     
     function setupMobileBottomNav() {
-        if (!mobileBottomNav) return;
+        console.log('开始初始化移动端底部导航...');
         
-        const buttons = mobileBottomNav.querySelectorAll('button');
-        buttons.forEach(button => {
-            button.addEventListener('click', handleMobileBottomNavClick);
-        });
-        
-        // 更新收藏计数
-        updateMobileFavoritesCount();
+        try {
+            const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
+            if (!mobileBottomNav) {
+                console.warn('移动端底部导航元素未找到');
+                return;
+            }
+
+            const buttons = mobileBottomNav.querySelectorAll('button');
+            console.log('找到移动端底部导航按钮数量:', buttons.length);
+            
+            buttons.forEach(button => {
+                button.addEventListener('click', handleMobileBottomNavClick);
+            });
+            
+            // 更新收藏计数
+            updateMobileFavoritesCount();
+            console.log('移动端底部导航初始化完成');
+        } catch (error) {
+            console.error('初始化移动端底部导航时出错:', error);
+        }
     }
     
     function handleMobileBottomNavClick(e) {
         const action = e.currentTarget.dataset.action;
         
         // 更新活跃状态
-        mobileBottomNav.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-        e.currentTarget.classList.add('active');
+        const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
+        if (mobileBottomNav) {
+            mobileBottomNav.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+        }
         
         switch (action) {
             case 'scroll-to-top':
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 break;
             case 'focus-search':
-                searchInput.focus();
-                searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                const searchInput = document.getElementById('search-input');
+                if (searchInput) {
+                    searchInput.focus();
+                    searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 break;
             case 'show-favorites':
                 performTagSearch('favorites');
@@ -3254,20 +3611,34 @@
     }
     
     function optimizeMobileSearch() {
-        // 移动端搜索框优化
-        searchInput.addEventListener('focus', () => {
-            // 滚动到搜索框
-            setTimeout(() => {
-                searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 300);
-        });
+        console.log('开始优化移动端搜索...');
         
-        // 优化搜索建议在移动端的显示
-        const suggestions = document.getElementById('search-suggestions');
-        if (suggestions) {
-            suggestions.addEventListener('touchstart', (e) => {
-                e.preventDefault(); // 防止双击缩放
+        try {
+            const searchInput = document.getElementById('search-input');
+            if (!searchInput) {
+                console.warn('搜索输入框未找到');
+                return;
+            }
+
+            // 移动端搜索框优化
+            searchInput.addEventListener('focus', () => {
+                // 滚动到搜索框
+                setTimeout(() => {
+                    searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 300);
             });
+            
+            // 优化搜索建议在移动端的显示
+            const suggestions = document.getElementById('search-suggestions');
+            if (suggestions) {
+                suggestions.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // 防止双击缩放
+                });
+            }
+            
+            console.log('移动端搜索优化完成');
+        } catch (error) {
+            console.error('优化移动端搜索时出错:', error);
         }
     }
     
@@ -3347,9 +3718,9 @@
         }
     }
 
-    // 全局错误处理器 - 用于捕获未定义的函数或变量错误
+    // 全局错误处理器 - 改进版本用于精确调试
     window.addEventListener('error', function(e) {
-        console.error('全局错误捕获:', {
+        console.error('🚨 JavaScript错误捕获:', {
             message: e.message,
             filename: e.filename,
             lineno: e.lineno,
@@ -3358,29 +3729,23 @@
             stack: e.error?.stack
         });
         
-        // 特别处理常见的未定义错误
-        if (e.message.includes('is not defined') || e.message.includes('undefined')) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'fixed top-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded z-50';
-            errorDiv.innerHTML = `
-                <strong>调试信息：</strong><br>
-                错误：${e.message}<br>
-                文件：${e.filename}<br>
-                行号：${e.lineno}:${e.colno}
-            `;
-            document.body.appendChild(errorDiv);
-            
-            // 5秒后自动移除
-            setTimeout(() => {
-                errorDiv.remove();
-            }, 5000);
+        // 输出详细的错误信息到控制台
+        console.group('🔍 错误详情分析');
+        console.log('错误消息:', e.message);
+        console.log('发生位置:', `${e.filename}:${e.lineno}:${e.colno}`);
+        console.log('错误对象:', e.error);
+        if (e.error?.stack) {
+            console.log('调用栈:', e.error.stack);
         }
+        console.groupEnd();
+        
+        return false; // 让浏览器继续处理错误
     });
 
     // 捕获未处理的 Promise 拒绝
     window.addEventListener('unhandledrejection', function(e) {
-        console.error('未处理的 Promise 拒绝:', e.reason);
-        console.error('Promise 拒绝堆栈:', e.reason?.stack);
+        console.error('🚨 Promise拒绝捕获:', e.reason);
+        console.error('Promise拒绝堆栈:', e.reason?.stack);
     });
 
     // --- 核心功能 ---
@@ -3389,12 +3754,12 @@
         showProgress('正在初始化...');
         try {
             console.log('加载基础设置...');
-            // 基础设置加载
-            loadFavorites();
-            loadViewMode();
-            loadSearchHistory();
-            initializeTheme();
-            initializeSearchSuggestions();
+            // 基础设置加载 - 使用 try-catch 包装每个函数调用
+            try { loadFavorites(); } catch (e) { console.warn('loadFavorites error:', e); }
+            try { loadViewMode(); } catch (e) { console.warn('loadViewMode error:', e); }
+            try { loadSearchHistory(); } catch (e) { console.warn('loadSearchHistory error:', e); }
+            try { initializeTheme(); } catch (e) { console.warn('initializeTheme error:', e); }
+            try { initializeSearchSuggestions(); } catch (e) { console.warn('initializeSearchSuggestions error:', e); }
             
             console.log('尝试加载用户偏好...');
             // 尝试加载用户偏好和其他设置（如果函数存在）
@@ -3411,7 +3776,9 @@
             console.log('尝试初始化用户引导...');
             // 尝试初始化用户引导（如果函数存在）
             try {
-                initializeUserGuidance();
+                if (typeof initializeUserGuidance === 'function') {
+                    initializeUserGuidance();
+                }
             } catch (e) {
                 console.warn('初始化用户引导时出现警告:', e);
             }
@@ -3428,9 +3795,9 @@
             if (state.manifest.availableMonths && state.manifest.availableMonths.length > 0) {
                 console.log('数据清单有效，可用月份:', state.manifest.availableMonths);
                 console.log('开始设置UI...');
-                setupUI();
+                try { setupUI(); } catch (e) { console.error('setupUI error:', e); }
                 console.log('开始设置事件监听器...');
-                setupGlobalEventListeners();
+                try { setupGlobalEventListeners(); } catch (e) { console.error('setupGlobalEventListeners error:', e); }
                 
                 const urlParams = new URLSearchParams(window.location.search);
                 const queryFromUrl = urlParams.get('q');
@@ -3481,6 +3848,7 @@
         setupBackToTopButton();
         setupIntersectionObserver();
         updateSearchHistoryDisplay();
+        setupDateFilter(); // 添加日期筛选初始化
         initializeMobileFeatures(); // 新增移动端功能初始化
         if(state.manifest.lastUpdated) lastUpdatedEl.textContent = `数据更新于: ${state.manifest.lastUpdated}`;
         document.getElementById('favorites-count').textContent = state.favorites.size;
@@ -4963,9 +5331,14 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     function renderFilteredResults() {
         const { currentSearchResults, activeCategoryFilter, currentQuery } = state;
         
-        const filtered = activeCategoryFilter === 'all'
+        let filtered = activeCategoryFilter === 'all'
             ? currentSearchResults
             : currentSearchResults.filter(paper => paper.categories && paper.categories.includes(activeCategoryFilter));
+
+        // 应用日期筛选
+        if (currentDateFilter && currentDateFilter.startDate && currentDateFilter.endDate) {
+            filtered = applyDateFilterToResults(filtered);
+        }
 
         searchResultsContainer.innerHTML = '';
         
@@ -4977,10 +5350,14 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         }
         
         if (activeCategoryFilter !== 'all') {
-            infoText += `，其中 <strong>${filtered.length}</strong> 篇属于 <strong>${activeCategoryFilter}</strong> 分类：`;
-        } else {
-            infoText += '：';
+            infoText += `，其中 <strong>${filtered.length}</strong> 篇属于 <strong>${activeCategoryFilter}</strong> 分类`;
         }
+        
+        if (currentDateFilter && currentDateFilter.startDate && currentDateFilter.endDate) {
+            infoText += ` (已应用日期筛选)`;
+        }
+        
+        infoText += '：';
 
         searchInfoEl.innerHTML = infoText;
 
@@ -5325,19 +5702,20 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             else if (target.id === 'export-favorites-csv') exportFavorites('csv');
             else if (target.id === 'export-favorites-bibtex') exportFavorites('bibtex');
             else if (target.id === 'export-favorites-markdown') exportFavorites('markdown');
-            else if (target.id === 'export-notes-json') exportUserData('notes');
-            else if (target.id === 'export-tags-json') exportUserData('tags');
-            else if (target.id === 'export-ratings-json') exportUserData('ratings');
-            else if (target.id === 'export-all-data') exportUserData('all');
+            else if (target.id === 'export-notes-json') exportNotes('json');
+            else if (target.id === 'export-tags-json') exportTags('json');
+            else if (target.id === 'export-ratings-json') exportRatings('json');
+            else if (target.id === 'export-all-data') exportAllData();
+            
+            // 数据导入
+            else if (target.id === 'import-favorites') importData('favorites');
+            else if (target.id === 'import-notes') importData('notes');
             
             // 设置保存和重置
             else if (target.id === 'save-settings') savePersonalizationSettings();
             else if (target.id === 'reset-settings') resetPersonalizationSettings();
             else if (target.id === 'backup-now') createManualBackup();
-            else if (target.id === 'clear-all-data') clearAllUserData();
-            
-            // 自定义分类
-            else if (target.id === 'add-custom-category') addCustomCategory();
+            else if (target.id === 'clear-all-data') clearAllData();
         });
         
         // 文件导入
@@ -5403,16 +5781,32 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     
     // 打开设置模态框
     function openSettingsModal() {
-        loadSettingsValues();
-        updatePersonalizationUI();
-        settingsModal.classList.remove('hidden');
+        try {
+            loadSettingsValues();
+            updatePersonalizationUI();
+            const settingsModal = document.getElementById('settings-modal');
+            if (settingsModal) {
+                settingsModal.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('打开设置模态框时出错:', error);
+            showToast('打开设置失败', 'error');
+        }
     }
     
     // 打开数据管理模态框
     function openDataManagementModal() {
-        updatePersonalizationUI();
-        updateLastBackupTime();
-        dataManagementModal.classList.remove('hidden');
+        try {
+            updatePersonalizationUI();
+            updateLastBackupTime();
+            const dataManagementModal = document.getElementById('data-management-modal');
+            if (dataManagementModal) {
+                dataManagementModal.classList.remove('hidden');
+            }
+        } catch (error) {
+            console.error('打开数据管理模态框时出错:', error);
+            showToast('打开数据管理失败', 'error');
+        }
     }
     
     // 关闭模态框
@@ -5425,25 +5819,29 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     
     // 加载设置值到UI
     function loadSettingsValues() {
-        const themeSelect = document.getElementById('theme-preference');
-        const viewSelect = document.getElementById('view-preference');
-        const dailyTarget = document.getElementById('daily-target');
-        const weeklyTarget = document.getElementById('weekly-target');
-        const recommendationEnabled = document.getElementById('recommendation-enabled');
-        const tooltipsEnabled = document.getElementById('tooltips-enabled');
-        const keyboardNavEnabled = document.getElementById('keyboard-nav-enabled');
-        const autoBackupEnabled = document.getElementById('auto-backup-enabled');
-        const backupFrequency = document.getElementById('backup-frequency');
-        
-        if (themeSelect) themeSelect.value = state.userPreferences.preferredTheme || 'system';
-        if (viewSelect) viewSelect.value = state.userPreferences.defaultView || 'detailed';
-        if (dailyTarget) dailyTarget.value = state.userPreferences.readingGoals.dailyTarget || 5;
-        if (weeklyTarget) weeklyTarget.value = state.userPreferences.readingGoals.weeklyTarget || 30;
-        if (recommendationEnabled) recommendationEnabled.checked = state.userPreferences.recommendationEnabled;
-        if (tooltipsEnabled) tooltipsEnabled.checked = state.userPreferences.showTooltips;
-        if (keyboardNavEnabled) keyboardNavEnabled.checked = state.userPreferences.enableKeyboardNav;
-        if (autoBackupEnabled) autoBackupEnabled.checked = state.dataManagement.autoBackup;
-        if (backupFrequency) backupFrequency.value = state.dataManagement.backupInterval / (60 * 60 * 1000);
+        try {
+            const themeSelect = document.getElementById('theme-preference');
+            const viewSelect = document.getElementById('view-preference');
+            const dailyTarget = document.getElementById('daily-target');
+            const weeklyTarget = document.getElementById('weekly-target');
+            const recommendationEnabled = document.getElementById('recommendation-enabled');
+            const tooltipsEnabled = document.getElementById('tooltips-enabled');
+            const keyboardNavEnabled = document.getElementById('keyboard-nav-enabled');
+            const autoBackupEnabled = document.getElementById('auto-backup-enabled');
+            const backupFrequency = document.getElementById('backup-frequency');
+            
+            if (themeSelect) themeSelect.value = state.userPreferences.preferredTheme || 'system';
+            if (viewSelect) viewSelect.value = state.userPreferences.defaultView || 'detailed';
+            if (dailyTarget) dailyTarget.value = state.userPreferences.readingGoals.dailyTarget || 5;
+            if (weeklyTarget) weeklyTarget.value = state.userPreferences.readingGoals.weeklyTarget || 30;
+            if (recommendationEnabled) recommendationEnabled.checked = state.userPreferences.recommendationEnabled;
+            if (tooltipsEnabled) tooltipsEnabled.checked = state.userPreferences.showTooltips;
+            if (keyboardNavEnabled) keyboardNavEnabled.checked = state.userPreferences.enableKeyboardNav;
+            if (autoBackupEnabled) autoBackupEnabled.checked = state.dataManagement?.autoBackup || false;
+            if (backupFrequency) backupFrequency.value = (state.dataManagement?.backupInterval || 24 * 60 * 60 * 1000) / (60 * 60 * 1000);
+        } catch (error) {
+            console.error('加载设置值失败:', error);
+        }
     }
     
     // 保存个性化设置
@@ -6820,6 +7218,37 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             </svg>
             <p class="text-sm">暂无推荐内容</p>
             <p class="text-xs text-gray-400 mt-1">继续阅读论文以获得个性化推荐</p>
+        </div>
+    </div>
+</div>
+
+<!-- 日期筛选模态框 -->
+<div id="date-filter-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 w-full max-w-md mx-4">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">日期筛选</h3>
+            <button id="close-date-modal" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" title="关闭" aria-label="关闭日期筛选">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+        
+        <div class="space-y-4">
+            <div>
+                <label for="start-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">开始日期</label>
+                <input type="date" id="start-date" name="start-date" title="选择开始日期" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white">
+            </div>
+            
+            <div>
+                <label for="end-date" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">结束日期</label>
+                <input type="date" id="end-date" name="end-date" title="选择结束日期" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white">
+            </div>
+        </div>
+        
+        <div class="flex gap-3 mt-6">
+            <button id="apply-date-filter" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">应用筛选</button>
+            <button id="clear-date-filter" class="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">清除</button>
         </div>
     </div>
 </div>

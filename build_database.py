@@ -3,6 +3,7 @@ import glob
 import json
 import re
 from collections import defaultdict
+from datetime import datetime
 
 # 定义一个简单的英文停用词列表，用于构建搜索索引时忽略这些常见词
 STOP_WORDS = set([
@@ -105,13 +106,13 @@ def build_database_from_jsonl():
                             search_index[token].add(paper_id)
                     
                     if paper_data.get("keywords"):
-                        for keyword in paper_data.get("keywords"):
+                        for keyword in paper_data.get("keywords", []):
                             if keyword:
                                 search_index[keyword.lower()].add(paper_id)
 
                     # 新增：构建分类索引
                     if paper_data.get("categories"):
-                        for category in paper_data.get("categories"):
+                        for category in paper_data.get("categories", []):
                             category_index[category].add(paper_id)
 
                 except (json.JSONDecodeError, AttributeError):
@@ -135,7 +136,13 @@ def build_database_from_jsonl():
     print(f"成功写入 {len(monthly_data)} 个月度数据分片文件。")
 
     available_months = sorted(monthly_data.keys(), reverse=True)
-    manifest = {"availableMonths": available_months, "totalPaperCount": total_paper_count}
+    # 添加当前日期作为最后更新时间
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    manifest = {
+        "availableMonths": available_months, 
+        "totalPaperCount": total_paper_count,
+        "lastUpdated": current_date
+    }
     manifest_file_path = os.path.join(output_dir, "index.json")
     with open(manifest_file_path, 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
