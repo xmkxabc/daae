@@ -11,7 +11,7 @@ class ArxivSpider2(scrapy.Spider):
     4. 健壮性：对可能缺失的元素进行检查，避免因页面结构微小变化而崩溃。
     5. 清晰日志：提供详细的运行日志，方便调试和监控。
     """
-    name = "arxiv"  # 爬虫名称
+    name = "arxiv_2"  # 爬虫名称
     allowed_domains = ["arxiv.org"]  # 允许爬取的域名
 
     def __init__(self, filter='true', *args, **kwargs):
