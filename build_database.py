@@ -72,15 +72,15 @@ def build_database_from_jsonl():
                     paper_data = {
                         "id": paper_id,
                         "title": raw_data.get("title", "无标题"),
-                        # "date": file_date,
-                        "date": raw_data.get("date", file_date), # 使用文件日期作为默认值
+                        "date": file_date, # 使用文件日期作为默认值
+                        #"date": raw_data.get("date", file_date), # 使用创建日期或文件日期作为默认值
                         "url": raw_data.get("abs", "#"),
                         "pdf_url": raw_data.get("pdf", "#"), # 直接获取PDF链接
                         "authors": ", ".join(raw_data.get("authors", [])),
                         "abstract": raw_data.get("summary", ""),
                         "comment": raw_data.get("comment", ""),
                         "categories": raw_data.get("categories", []),
-                        "updated": raw_data.get("updated", file_date), # 使用文件日期作为默认值
+                        "updated": raw_data.get("updated", file_date), # 使用更新日期或文件日期作为默认值
                         
                         # 从AI对象中提取所有丰富信息，并修正字段名
                         "zh_title": ai_enhanced_info.get("title_translation"),

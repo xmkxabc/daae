@@ -118,6 +118,7 @@ def main():
             "url": f"https://arxiv.org/abs/{paper.get('id', '')}",
             "cate": paper.get("categories", ["N/A"])[0],
             "categories": paper.get('all_categories_str', 'N/A'), # 使用我们创建的完整分类字符串
+            "updated": paper.get("updated", "N/A"), # 使用更新日期
 
             "title_translation": ai_data.get('title_translation', 'N/A'),
             "keywords": ai_data.get('keywords', 'N/A'),
