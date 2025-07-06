@@ -52,12 +52,19 @@ jobs:
           source .venv/bin/activate
           
           # 动态定义文件名
-          TODAY=$(date +"%Y-%m-%d")
-          RAW_JSONL_FILE="data/$TODAY.jsonl"
-          ENHANCED_JSONL_FILE="data/${TODAY}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
-          OUTPUT_MD_FILE="data/$TODAY.md"
-          PAPER_TEMPLATE_FILE="to_md/paper_template.md"
+          # TODAY=$(date +"%Y-%m-%d")
+          # RAW_JSONL_FILE="data/$TODAY.jsonl"
+          # ENHANCED_JSONL_FILE="data/${TODAY}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
+          # OUTPUT_MD_FILE="data/$TODAY.md"
+          # PAPER_TEMPLATE_FILE="to_md/paper_template.md"
           
+          # 动态定义文件名，获取前一天的日期
+          TARGET_DATE=$(date -d "yesterday" +"%Y-%m-%d")
+          RAW_JSONL_FILE="data/$TARGET_DATE.jsonl"
+          ENHANCED_JSONL_FILE="data/${TARGET_DATE}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
+          OUTPUT_MD_FILE="data/$TARGET_DATE.md"
+          PAPER_TEMPLATE_FILE="to_md/paper_template.md"
+
           # 步骤 1: 运行Scrapy爬虫
           echo "Step 1: Fetching new papers from arXiv..."
           (cd daily_arxiv && scrapy crawl arxiv -o "../$RAW_JSONL_FILE")
@@ -93,7 +100,8 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # **修正**: 从上一步的输出中获取日期
-          title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TODAY_DATE }}"
+          # title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TODAY_DATE }}"
+          title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TARGET_DATE }}"
           content-filepath: "${{ steps.run_scripts.outputs.report_path }}"
           labels: daily-digest, automated
       

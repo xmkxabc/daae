@@ -479,6 +479,19 @@
             outline-offset: 2px;
         }
         
+        /* 新增：分类筛选器滚动条样式 */
+        #category-filters::-webkit-scrollbar {
+            height: 4px;
+        }
+        #category-filters::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+            border-radius: 2px;
+        }
+        #category-filters::-webkit-scrollbar-thumb {
+            background: var(--accent-primary);
+            border-radius: 2px;
+        }
+
         /* 新增：日期筛选器样式 */
         .month-header { 
             font-size: 1.75rem; 
@@ -1554,25 +1567,6 @@
                 margin: 0.25rem;
                 flex-shrink: 0;
             }
-            
-            #category-filters {
-                overflow-x: auto;
-                padding-bottom: 0.5rem;
-            }
-            
-            #category-filters::-webkit-scrollbar {
-                height: 4px;
-            }
-            
-            #category-filters::-webkit-scrollbar-track {
-                background: var(--bg-tertiary);
-                border-radius: 2px;
-            }
-            
-            #category-filters::-webkit-scrollbar-thumb {
-                background: var(--accent-primary);
-                border-radius: 2px;
-            }
         }
         
         /* 日期筛选器移动端优化 */
@@ -2197,15 +2191,6 @@
     <!-- 优化：改进快速导航栏HTML结构以获得更好的响应式效果 -->
     <div id="quick-nav-container" class="sticky top-0 z-20 py-2 mb-8 quick-nav-container">
         <nav id="quick-nav" class="quick-nav px-4">
-            <!-- 移动端汉堡菜单按钮 -->
-            <div class="flex justify-between items-center md:hidden mb-2">
-                <h2 class="text-lg font-semibold text-gray-800">月份导航</h2>
-                <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="展开/收起导航菜单">
-                    <span id="hamburger-icon">☰</span>
-                    <span id="close-icon" class="hidden">✕</span>
-                </button>
-            </div>
-            
             <!-- 导航内容 -->
             <div id="mobile-nav-content" class="mobile-nav-content">
                 <!-- 月份导航 -->
@@ -2322,11 +2307,16 @@
             <div class="relative flex gap-3 items-center">
                 <div class="relative flex-1">
                     <input type="text" id="searchInput" placeholder="搜索论文或点击分类/关键词进行筛选..." 
-                           class="w-full p-4 pl-12 pr-16 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                           class="w-full p-4 pl-12 pr-24 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                            autocomplete="off">
                     <svg class="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
+                    <button id="clear-search-btn" class="absolute right-12 top-1/2 transform -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors hidden" title="清除搜索">
+                        <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                     <button id="date-filter-toggle" class="absolute right-3 top-1/2 transform -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="日期筛选">
                         <svg class="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -2365,7 +2355,7 @@
 
     <!-- 新增：分类筛选器容器 -->
     <div id="category-filter-container" class="mb-8 hidden">
-        <div id="category-filters" class="flex flex-wrap items-center gap-2"></div>
+        <div id="category-filters" class="flex items-center gap-2 overflow-x-auto pb-2"></div>
     </div>
     
     <main id="main-content">
@@ -2385,7 +2375,7 @@
 </div>
 
 <!-- 新增：可访问性优化 -->
-<button id="back-to-top" class="back-to-top-btn" aria-label="返回顶部" title="返回页面顶部">
+<button id="back-to-top" class="back-to-top-btn hidden md:flex" aria-label="返回顶部" title="返回页面顶部">
     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" /></svg>
 </button>
 
@@ -2480,6 +2470,7 @@
         manifest: null, searchIndex: null, categoryIndex: null, allPapers: new Map(),
         loadedMonths: new Set(), currentMonthIndex: -1, isFetching: false, isSearchMode: false,
         navObserver: null, currentQuery: '', favorites: new Set(), viewMode: 'detailed',
+        allCategories: [],
         mainCategories: ['cs.CV', 'cs.LG', 'cs.CL', 'cs.AI', 'cs.RO', 'stat.ML'],
         currentSearchResults: [], 
         activeCategoryFilter: 'all',
@@ -3369,72 +3360,46 @@
     
     function setupMobileNavigation() {
         console.log('开始初始化移动端导航...');
-        
         try {
-            // 在函数内部获取DOM元素
-            const mobileNavToggle = document.getElementById('mobile-nav-toggle');
-            const mobileNavContent = document.getElementById('mobile-nav-content');
-            const hamburgerIcon = document.getElementById('hamburger-icon');
-            const closeIcon = document.getElementById('close-icon');
-            
-            console.log('移动端导航DOM元素检查:', {
-                mobileNavToggle: !!mobileNavToggle,
-                mobileNavContent: !!mobileNavContent,
-                hamburgerIcon: !!hamburgerIcon,
-                closeIcon: !!closeIcon
+            // 点击外部关闭菜单
+            document.addEventListener('click', (e) => {
+                const quickNavContainer = document.getElementById('quick-nav-container');
+                const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
+                
+                if (state.mobile.isMenuOpen && 
+                    quickNavContainer && !quickNavContainer.contains(e.target) &&
+                    mobileBottomNav && !mobileBottomNav.contains(e.target)
+                ) {
+                    console.log('点击外部关闭移动端菜单');
+                    closeMobileMenu();
+                }
             });
-            
-            if (mobileNavToggle && mobileNavContent) {
-                mobileNavToggle.addEventListener('click', () => {
-                    console.log('点击移动端导航切换按钮');
-                    toggleMobileMenu();
-                });
-                
-                // 点击外部关闭菜单
-                document.addEventListener('click', (e) => {
-                    const quickNavContainer = document.getElementById('quick-nav-container');
-                    if (state.mobile.isMenuOpen && 
-                        quickNavContainer && 
-                        !quickNavContainer.contains(e.target)) {
-                        console.log('点击外部关闭移动端菜单');
-                        closeMobileMenu();
-                    }
-                });
-                
-                console.log('移动端导航初始化完成');
-            } else {
-                console.warn('移动端导航元素未找到，跳过移动端导航初始化');
-            }
+            console.log('移动端导航初始化完成');
         } catch (error) {
             console.error('初始化移动端导航时出错:', error);
         }
     }
     
     function toggleMobileMenu() {
+        console.log('切换移动端菜单');
         state.mobile.isMenuOpen = !state.mobile.isMenuOpen;
         updateMobileMenuState();
     }
     
     function closeMobileMenu() {
+        if (!state.mobile.isMenuOpen) return;
+        console.log('关闭移动端菜单');
         state.mobile.isMenuOpen = false;
         updateMobileMenuState();
     }
     
     function updateMobileMenuState() {
         const mobileNavContent = document.getElementById('mobile-nav-content');
-        const hamburgerIcon = document.getElementById('hamburger-icon');
-        const closeIcon = document.getElementById('close-icon');
+        const mobileMenuBtn = document.getElementById('mobile-nav-menu');
         
-        if (mobileNavContent && hamburgerIcon && closeIcon) {
-            if (state.mobile.isMenuOpen) {
-                mobileNavContent.classList.add('active');
-                hamburgerIcon.classList.add('hidden');
-                closeIcon.classList.remove('hidden');
-            } else {
-                mobileNavContent.classList.remove('active');
-                hamburgerIcon.classList.remove('hidden');
-                closeIcon.classList.add('hidden');
-            }
+        if (mobileNavContent && mobileMenuBtn) {
+            mobileNavContent.classList.toggle('active', state.mobile.isMenuOpen);
+            mobileMenuBtn.classList.toggle('active', state.mobile.isMenuOpen);
         }
     }
     
@@ -3574,13 +3539,23 @@
     }
     
     function handleMobileBottomNavClick(e) {
-        const action = e.currentTarget.dataset.action;
+        const button = e.currentTarget;
+        const action = button.dataset.action;
         
-        // 更新活跃状态
+        // 如果点击的不是菜单按钮，则关闭菜单
+        if (action !== 'toggle-mobile-menu' && state.mobile.isMenuOpen) {
+            closeMobileMenu();
+        }
+
+        // 更新活跃状态 (不包括菜单按钮，其状态由 updateMobileMenuState 控制)
         const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
-        if (mobileBottomNav) {
-            mobileBottomNav.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-            e.currentTarget.classList.add('active');
+        if (mobileBottomNav && action !== 'toggle-mobile-menu') {
+            mobileBottomNav.querySelectorAll('button').forEach(btn => {
+                if (btn.dataset.action !== 'toggle-mobile-menu') {
+                    btn.classList.remove('active');
+                }
+            });
+            button.classList.add('active');
         }
         
         switch (action) {
@@ -3588,11 +3563,8 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 break;
             case 'focus-search':
-                const searchInput = document.getElementById('search-input');
-                if (searchInput) {
-                    searchInput.focus();
-                    searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
+                searchInput.focus();
+                searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 break;
             case 'show-favorites':
                 performTagSearch('favorites');
@@ -3790,6 +3762,22 @@
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             state.manifest = await response.json();
             console.log('数据清单加载成功:', state.manifest);
+
+            // 新增：在初始化时加载全部分类
+            try {
+                console.log('开始加载分类索引...');
+                const catResponse = await fetch('./data/category_index.json');
+                if (catResponse.ok) {
+                    const catIndex = await catResponse.json();
+                    state.categoryIndex = catIndex;
+                    state.allCategories = Object.keys(catIndex).sort();
+                    console.log(`分类加载成功，共找到 ${state.allCategories.length} 个分类。`);
+                }
+            } catch (e) {
+                console.warn('初始化时加载 category_index.json 失败，筛选功能将受限。', e);
+                // 如果加载失败，则回退到预设的核心分类
+                state.allCategories = state.mainCategories;
+            }
             
             console.log('检查数据清单内容...');
             if (state.manifest.availableMonths && state.manifest.availableMonths.length > 0) {
@@ -3811,6 +3799,7 @@
                 } else if (queryFromUrl) {
                     console.log('处理URL查询...');
                     searchInput.value = queryFromUrl;
+                    updateClearButtonVisibility();
                     await handleSearch();
                 } else {
                     console.log('加载默认内容...');
@@ -4601,9 +4590,46 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     }
     
     function setupCategoryFilters() {
-        let buttonsHTML = `<button class="category-filter-btn active" data-action="filter-category" data-category="all">全部</button>`;
-        state.mainCategories.forEach(cat => {
-            buttonsHTML += `<button class="category-filter-btn" data-action="filter-category" data-category="${cat}">${cat}</button>`;
+        if (!state.categoryIndex) {
+            categoryFiltersEl.innerHTML = '<p class="text-sm text-gray-500">分类信息加载中...</p>';
+            return;
+        }
+
+        const categoriesWithCounts = state.allCategories.map(cat => ({
+            name: cat,
+            count: state.categoryIndex[cat] ? state.categoryIndex[cat].length : 0
+        }));
+
+        categoriesWithCounts.sort((a, b) => b.count - a.count);
+
+        let buttonsHTML = '';
+        categoriesWithCounts.forEach(catInfo => {
+            if (catInfo.count > 0) { // 只显示有论文的分类
+                buttonsHTML += `<button class="category-filter-btn flex-shrink-0" data-action="search-tag" data-tag-value="${catInfo.name}">${catInfo.name} (${catInfo.count})</button>`;
+            }
+        });
+        categoryFiltersEl.innerHTML = buttonsHTML;
+    }
+
+    function renderCategoryFiltersForSearch(papers) {
+        const categoryCounts = new Map();
+        papers.forEach(paper => {
+            if (paper.categories) {
+                paper.categories.forEach(cat => {
+                    categoryCounts.set(cat, (categoryCounts.get(cat) || 0) + 1);
+                });
+            }
+        });
+
+        const sortedCategories = Array.from(categoryCounts.entries())
+            .map(([name, count]) => ({ name, count }))
+            .sort((a, b) => b.count - a.count);
+
+        let buttonsHTML = `<button class="category-filter-btn active flex-shrink-0" data-action="filter-category" data-category="all">全部 (${papers.length})</button>`;
+        sortedCategories.forEach(catInfo => {
+            if (catInfo.count > 0) {
+                buttonsHTML += `<button class="category-filter-btn flex-shrink-0" data-action="filter-category" data-category="${catInfo.name}">${catInfo.name} (${catInfo.count})</button>`;
+            }
         });
         categoryFiltersEl.innerHTML = buttonsHTML;
     }
@@ -4978,9 +5004,14 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         const categoriesHTML = (paper.categories && paper.categories.length > 0) ? 
             paper.categories.slice(0, 2).map(cat => `<span class="keyword-tag inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">${cat}</span>`).join('') : '';
         
+        let updatedInfoHTML = '';
+        if (paper.updated && paper.date && paper.updated.split('T')[0] !== paper.date.split('T')[0]) {
+            updatedInfoHTML = ` | <span class="text-green-600 text-xs font-semibold">Updated</span>`;
+        }
+        
         return `
             <div class="flex justify-between items-start">
-                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date || '未知日期'} ${categoriesHTML ? '| ' : ''}${categoriesHTML}</p>
+                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date || '未知日期'} ${categoriesHTML ? '| ' : ''}${categoriesHTML}${updatedInfoHTML}</p>
                 <button data-action="toggle-favorite" data-paper-id="${paper.id}" title="收藏/取消收藏" class="favorite-btn ${isFavorited ? 'favorited' : ''}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
                 </button>
@@ -5021,9 +5052,14 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             return `<div class="info-box info-box-${color}"><p class="info-box-title ${titleClass}">${title}:</p><p class="${contentClasses.join(' ')}">${content}</p></div>`;
         };
 
+        let updatedInfoHTML = '';
+        if (paper.updated && paper.date && paper.updated.split('T')[0] !== paper.date.split('T')[0]) {
+            updatedInfoHTML = ` | <span class="text-green-600 font-semibold">Updated: ${paper.updated.split('T')[0]}</span>`;
+        }
+
         return `
             <div class="flex justify-between items-start">
-                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date||'未知日期'} ${categoriesHTML?'| ':''}${categoriesHTML}</p>
+                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date||'未知日期'} ${categoriesHTML?'| ':''}${categoriesHTML}${updatedInfoHTML}</p>
                 <div class="flex items-center space-x-2">
                     <button data-action="toggle-notes" data-paper-id="${paper.id}" title="添加/编辑笔记" class="text-gray-500 hover:text-blue-600 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
@@ -5320,6 +5356,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 }
                 
                 state.currentSearchResults = results;
+                renderCategoryFiltersForSearch(results);
                 renderFilteredResults();
             });
         } finally {
@@ -5386,9 +5423,12 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         papersContainer.classList.remove('hidden');
         quickNavContainer.style.display = 'block';
         searchInfoEl.classList.add('hidden');
-        categoryFilterContainer.classList.add('hidden');
+        categoryFilterContainer.classList.remove('hidden'); // 确保分类栏可见
+        setupCategoryFilters(); // 恢复默认的分类按钮
         state.currentSearchResults = [];
         state.activeCategoryFilter = 'all';
+
+        updateClearButtonVisibility();
 
         if (reload) {
             papersContainer.innerHTML = '';
@@ -5401,6 +5441,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     function performTagSearch(tag) {
         window.scrollTo({ top: 0, behavior: 'auto' });
         searchInput.value = tag;
+        updateClearButtonVisibility();
         handleSearch();
     };
 
@@ -5465,6 +5506,15 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         }, duration);
     }
 
+    // 新增：集中管理清除按钮的可见性
+    function updateClearButtonVisibility() {
+        const clearBtn = document.getElementById('clear-search-btn');
+        if (clearBtn) {
+            const hasText = searchInput.value.trim().length > 0;
+            clearBtn.classList.toggle('hidden', !hasText);
+        }
+    }
+
     // 显示收藏夹
     function showFavorites() {
         searchInput.value = 'favorites';
@@ -5472,6 +5522,15 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
     }
 
     function setupGlobalEventListeners() {
+        // 新增：清除搜索按钮事件
+        const clearSearchBtn = document.getElementById('clear-search-btn');
+        if (clearSearchBtn) {
+            clearSearchBtn.addEventListener('click', () => {
+                resetToDefaultView();
+                searchInput.focus();
+            });
+        }
+
         // 主容器事件代理
         mainContainer.addEventListener('click', (event) => {
             const target = event.target.closest('[data-action]');
@@ -5516,10 +5575,17 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         
         // 分类筛选容器事件
         categoryFilterContainer.addEventListener('click', (event) => {
-            const target = event.target.closest('[data-action="filter-category"]');
+            const target = event.target.closest('[data-action]');
             if (!target || state.isFetching) return;
-            state.activeCategoryFilter = target.dataset.category;
-            renderFilteredResults();
+            
+            const { action, category, tagValue } = target.dataset;
+
+            if (action === 'filter-category') {
+                state.activeCategoryFilter = category;
+                renderFilteredResults();
+            } else if (action === 'search-tag') {
+                performTagSearch(tagValue);
+            }
         });
 
         // 主题切换
@@ -5557,8 +5623,8 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         let searchTimeout;
         searchInput.addEventListener('input', (event) => {
             clearTimeout(searchTimeout);
-            const query = event.target.value;
-            showSearchSuggestions(query);
+            updateClearButtonVisibility();
+            showSearchSuggestions(event.target.value);
             searchTimeout = setTimeout(() => {
                 if (!state.isFetching) handleSearch();
             }, 300);
