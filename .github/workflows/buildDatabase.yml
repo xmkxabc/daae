@@ -1,5 +1,5 @@
 # 工作流名称
-name: Daily Arxiv Digest & Deploy Website
+name: buildDatabaseAndReport
 
 on:
   # schedule:
