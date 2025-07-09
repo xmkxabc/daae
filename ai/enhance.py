@@ -39,6 +39,7 @@ class ProcessingTask:
     """处理任务的数据结构"""
     idx: int
     data: Dict
+    retry_count: int = 0
     
 @dataclass
 class ProcessingResult:
@@ -432,6 +433,9 @@ def main():
     monitor_thread.daemon = True
     monitor_thread.start()
 
+    # 记录处理开始时间
+    start_time = time.time()
+
     # 等待所有任务完成
     task_queue.join()
 
@@ -442,6 +446,9 @@ def main():
     # 等待所有线程结束
     for thread in threads:
         thread.join()
+
+    # 记录处理结束时间
+    end_time = time.time()
 
     # 收集结果
     results = []
@@ -480,15 +487,19 @@ def main():
         print(f"  所有模型优先级已使用完毕", file=sys.stderr)
     
     # 显示性能统计
+    actual_elapsed_time = end_time - start_time
+    print(f"\n--- 性能与耗时统计 ---", file=sys.stderr)
+    print(f"实际总耗时: {actual_elapsed_time:.1f}秒 ({actual_elapsed_time/60:.1f}分钟)", file=sys.stderr)
+
     if len(enhanced_data) > 0:
-        # 考虑分层使用模型的时间计算
         estimated_time_sequential = len(enhanced_data) * api_call_interval
-        # 并发处理时间取决于实际可用的密钥数量
         effective_concurrency = len(api_keys)
         estimated_concurrent_time = (len(enhanced_data) * api_call_interval) / effective_concurrency
-        print(f"顺序处理预计时间: {estimated_time_sequential:.1f}秒 ({estimated_time_sequential/60:.1f}分钟)", file=sys.stderr)
-        print(f"并发处理预计时间: {estimated_concurrent_time:.1f}秒 ({estimated_concurrent_time/60:.1f}分钟)", file=sys.stderr)
-        print(f"预计节省时间: {(estimated_time_sequential - estimated_concurrent_time)/60:.1f}分钟", file=sys.stderr)
+        
+        print(f"理论顺序处理时间 (估算): {estimated_time_sequential:.1f}秒 ({estimated_time_sequential/60:.1f}分钟)", file=sys.stderr)
+        print(f"理论并发处理时间 (估算): {estimated_concurrent_time:.1f}秒 ({estimated_concurrent_time/60:.1f}分钟)", file=sys.stderr)
+        if actual_elapsed_time > 0:
+            print(f"实际处理速度: {len(enhanced_data) / actual_elapsed_time:.2f} 篇/秒", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

@@ -2,7 +2,7 @@ import scrapy
 import os
 import re
 
-class ArxivSpider2(scrapy.Spider):
+class ArxivSpider(scrapy.Spider):
     """
     一个通用的arXiv爬虫，具有以下特性：
     1. 可配置性：通过环境变量 `CATEGORIES` 指定要爬取的分类。
@@ -11,17 +11,18 @@ class ArxivSpider2(scrapy.Spider):
     4. 健壮性：对可能缺失的元素进行检查，避免因页面结构微小变化而崩溃。
     5. 清晰日志：提供详细的运行日志，方便调试和监控。
     """
-    name = "arxiv"  # 爬虫名称
+    name = "arxiv"  # 爬虫名称 (保持不变，因为你是通过这个名字运行的)
     allowed_domains = ["arxiv.org"]  # 允许爬取的域名
 
     def __init__(self, filter='true', *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # 1. 配置分类和起始URL
-        categories_str = os.environ.get("CATEGORIES", "cs.CR") # 默认爬取计算机视觉和人工智能
-        # categories_str = os.environ.get("CATEGORIES", "cs.CR,cs.AI,cs.LG,cs.MA,cs.RO,cs.CV,cs.HC,cs.ET,cs.SE,cs.SI,cs.NI,cs.IT,cs.AR,cs.DC,cs.CY,cs.CE,cs.FL,eess.SY,eess.SP,eess.IV,eess.AS,cs.CL,cs.DS,cs.GR,cs.IR,cs.NE,math.NA,cs.SD,cs.SC,cs.SY,cs.TO") # 默认爬取计算机视觉和人工智能
+        # categories_str = os.environ.get("CATEGORIES", "cs.CR") # 默认爬取计算机视觉和人工智能
+        categories_str = os.environ.get("CATEGORIES", "cs.CR,cs.AI,cs.LG,cs.MA,cs.RO,cs.CV,cs.HC,cs.ET,cs.SE,cs.SI,cs.NI,cs.IT,cs.AR,cs.DC,cs.CY,cs.CE,cs.FL,eess.SY,eess.SP,eess.IV,eess.AS,cs.CL,cs.DS,cs.GR,cs.IR,cs.NE,math.NA,cs.SD,cs.SC,cs.SY,cs.TO") # 默认爬取计算机视觉和人工智能
         self.categories_list = [cat.strip() for cat in categories_str.split(",")]
         self.start_urls = [f"https://arxiv.org/list/{cat}/new" for cat in self.categories_list]
+        self.seen_ids = set() # 新增：用于跟踪已处理的论文ID
         self.logger.info(f"Starting spider for categories: {self.categories_list}")
 
         # 2. 配置是否进行分类筛选
@@ -45,17 +46,45 @@ class ArxivSpider2(scrapy.Spider):
     def parse(self, response):
         self.logger.info(f"Parsing page: {response.url}")
 
+        # 3. 新增：智能过滤页面底部的 cross-list 和导航链接
+        # arXiv 页面底部会列出一些交叉分类的论文，它们的HTML结构与新论文相同。
+        # 为了避免重复抓取和处理无效条目，我们找到分页导航链接中的最大item编号，
+        # 并跳过所有编号大于或等于该编号的论文条目。
+        nav_anchors = response.css("div#dlpage > small > a[href*='item']::attr(href)").getall()
+        skip_anchor_num = float('inf')
+        if nav_anchors:
+            try:
+                # 从最后一个导航链接中提取 'item' 的数字
+                last_anchor_href = nav_anchors[-1]
+                match = re.search(r'item=(\d+)', last_anchor_href)
+                if match:
+                    skip_anchor_num = int(match.group(1))
+                else:
+                    self.logger.warning(f"Could not find 'item' number in navigation anchor: {last_anchor_href}")
+            except (AttributeError, IndexError, ValueError):
+                self.logger.warning(f"Could not parse the navigation anchor number on {response.url}")
+
         # 遍历页面上每一篇论文的条目
         for paper in response.css("dl dt"):
             paper_anchor = paper.css("a[name^='item']::attr(name)").get()
             if not paper_anchor:
                 continue # 如果没有锚点，跳过这个dt（可能是无效条目）
+            
+            # 如果当前论文的锚点数字大于或等于要跳过的数字，则停止处理
+            if int(paper_anchor.replace('item', '')) >= skip_anchor_num:
+                continue
 
             # 4. 提取核心信息，并进行健壮性检查
             abstract_link = paper.css("a[title='Abstract']::attr(href)").get()
             if not abstract_link:
                 continue
             arxiv_id = abstract_link.split("/")[-1]
+
+            # 新增：在产出前检查ID是否已经存在
+            if arxiv_id in self.seen_ids:
+                self.logger.debug(f"Skipping already yielded paper: {arxiv_id}")
+                continue
+            self.seen_ids.add(arxiv_id)
 
             pdf_link = paper.css("a[title='pdf']::attr(href)").get()
             if pdf_link:
