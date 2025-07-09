@@ -5006,12 +5006,12 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         
         let updatedInfoHTML = '';
         if (paper.updated && paper.date && paper.updated.split('T')[0] !== paper.date.split('T')[0]) {
-            updatedInfoHTML = ` | <span class="text-green-600 text-xs font-semibold">Updated</span>`;
+            updatedInfoHTML = ` | <span class="text-green-600 text-xs font-semibold">Updated: ${paper.updated.split('T')[0]}</span>`;
         }
         
         return `
             <div class="flex justify-between items-start">
-                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date || '未知日期'} ${categoriesHTML ? '| ' : ''}${categoriesHTML}${updatedInfoHTML}</p>
+                <p class="text-sm text-gray-500 mb-2 flex-grow">Published: ${paper.date ? paper.date.split('T')[0] : '未知日期'} ${categoriesHTML ? '| ' : ''}${categoriesHTML}${updatedInfoHTML}</p>
                 <button data-action="toggle-favorite" data-paper-id="${paper.id}" title="收藏/取消收藏" class="favorite-btn ${isFavorited ? 'favorited' : ''}">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
                 </button>
@@ -5059,7 +5059,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
 
         return `
             <div class="flex justify-between items-start">
-                <p class="text-sm text-gray-500 mb-2 flex-grow">${paper.date||'未知日期'} ${categoriesHTML?'| ':''}${categoriesHTML}${updatedInfoHTML}</p>
+                <p class="text-sm text-gray-500 mb-2 flex-grow">Published: ${paper.date ? paper.date.split('T')[0] : '未知日期'} ${categoriesHTML ? '| ' : ''}${categoriesHTML}${updatedInfoHTML}</p>
                 <div class="flex items-center space-x-2">
                     <button data-action="toggle-notes" data-paper-id="${paper.id}" title="添加/编辑笔记" class="text-gray-500 hover:text-blue-600 transition">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>

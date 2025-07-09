@@ -2,9 +2,9 @@
 name: Daily Arxiv Digest & Deploy Website
 
 on:
-  # schedule:
-  #   # 每天在UTC时间02:00运行
-  #   - cron: "00 02 * * *"
+  schedule:
+    # 每天在UTC时间02:30运行
+    - cron: "30 02 * * *"
   workflow_dispatch: # 允许手动触发
   # --- [核心改造] 注释掉 push 触发器 ---
   # 当推送到主分支时将不再触发此工作流。

@@ -104,6 +104,7 @@ def main():
             "pdf_url": paper.get("pdf_url", "N/A"), # PDF链接
             "cate": primary_category,
             "url": f"https://arxiv.org/abs/{paper.get('id', '')}",
+            "updated": paper.get("updated", "N/A"),          
             
             # AI 数据
             "title_translation": ai_data.get('title_translation', 'N/A'),
