@@ -64,12 +64,13 @@ jobs:
           python update_readme.py
 
           echo "report_path=$OUTPUT_MD_FILE" >> $GITHUB_OUTPUT
+          echo "raw_jsonl_file_name=$RAW_JSONL_FILE_NAME" >> $GITHUB_OUTPUT
 
       - name: "Commit and Push Website/Report Files"
         run: |
           git pull origin main --rebase --autostash
           git add docs/ data/*.md README.md
-          git commit -m "build(site): update database, report, and README for ${RAW_JSONL_FILE_NAME}" || echo "No changes to commit."
+          git commit -m "build(site): update database, report, and README for ${{ steps.build_site.outputs.raw_jsonl_file_name }}" || echo "No changes to commit."
           git push
 
       # --- [可选] 创建每日速报 Issue ---
@@ -78,7 +79,7 @@ jobs:
         uses: peter-evans/create-issue-from-file@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          title: "每日速报 (Daily Digest): ${RAW_JSONL_FILE_NAME}"
+          title: "每日速报 (Daily Digest): ${{ steps.build_site.outputs.raw_jsonl_file_name }}"
           content-filepath: "${{ steps.build_site.outputs.report_path }}"
           labels: daily-digest, automated
 
