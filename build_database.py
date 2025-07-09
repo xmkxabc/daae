@@ -71,7 +71,8 @@ def build_database_from_jsonl():
                     # 2. 检查是否需要更新
                     existing_paper = all_papers_map.get(base_id)
                     if existing_paper and existing_paper.get('_version', 1) >= version:
-                        # 如果已存在且版本更高或相同，则跳过此条记录
+                        # 如果map中已存在的论文版本(existing_paper)比当前处理的论文版本(version)更高或相同，
+                        # 则跳过当前这条记录，从而保留map中已有的高版本。
                         continue
 
                     # --- 数据整形 ---
