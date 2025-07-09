@@ -52,17 +52,14 @@ class ProcessingResult:
 class APIKeyManager:
     """API密钥管理器，负责管理单个密钥的速率限制和调用"""
     
-    def __init__(self, api_key: str, key_name: str, model_names: List[str], 
-                 prompt_template, retries: int = 3, timeout: int = 1, 
-                 api_call_interval: int = 10):  # 改为10秒间隔
+    def __init__(self, api_key: str, key_name: str, model_names: List[str],
+                 prompt_template, retries: int = 3, timeout: int = 1):
         self.api_key = api_key
         self.key_name = key_name
         self.model_names = model_names
         self.prompt_template = prompt_template
         self.retries = retries
         self.timeout = timeout
-        self.api_call_interval = api_call_interval
-        self.last_call_time = 0
         self.lock = threading.Lock()
         
         # 跟踪每个模型的配额状态
@@ -86,16 +83,6 @@ class APIKeyManager:
             except Exception as e:
                 self.model_chains[model_name] = None
                 print(f"警告：无法为<{self.key_name}>初始化模型 {model_name}。错误：{e}", file=sys.stderr)
-    
-    def _wait_for_rate_limit(self):
-        """等待速率限制"""
-        with self.lock:
-            current_time = time.time()
-            time_since_last_call = current_time - self.last_call_time
-            if time_since_last_call < self.api_call_interval:
-                sleep_time = self.api_call_interval - time_since_last_call
-                time.sleep(sleep_time)
-            self.last_call_time = time.time()
     
     def is_model_available(self, model_name: str) -> bool:
         """检查模型是否可用（未耗尽配额）"""
@@ -131,8 +118,6 @@ class APIKeyManager:
         if not chain:
             return None, f"模型 {model_name} 未初始化"
             
-        self._wait_for_rate_limit()
-        
         for attempt in range(self.retries):
             print(f"  线程<{self.key_name}>使用: {model_name} (尝试 {attempt + 1}/{self.retries})", file=sys.stderr)
             try:
@@ -175,10 +160,15 @@ class APIKeyManager:
 class ModelScheduler:
     """模型调度器，管理按优先级分层的任务分配"""
     
-    def __init__(self, api_managers: List[APIKeyManager], model_names: List[str]):
+    def __init__(self, api_managers: List[APIKeyManager], model_names: List[str], api_call_interval: int):
         self.api_managers = api_managers
         self.model_names = model_names
         self.current_model_index = 0
+        # [新] 全局速率限制器
+        self.api_call_interval = api_call_interval
+        self.last_api_call_time = 0
+        self.rate_limit_lock = threading.Lock()
+
         self.last_used_manager_indices: DefaultDict[str, int] = defaultdict(int)
         self.lock = threading.Lock()
         
@@ -193,6 +183,17 @@ class ModelScheduler:
             available_keys = len(self.model_key_managers[model])
             print(f"  优先级 {i+1}: {model} - 可用密钥: {available_keys}个", file=sys.stderr)
         print("-------------------------", file=sys.stderr)
+
+    def enforce_rate_limit(self):
+        """
+        [新] 全局速率限制方法。所有线程在调用API前都必须调用此方法。
+        """
+        with self.rate_limit_lock:
+            current_time = time.time()
+            time_since_last_call = current_time - self.last_api_call_time
+            if time_since_last_call < self.api_call_interval:
+                time.sleep(self.api_call_interval - time_since_last_call)
+            self.last_api_call_time = time.time()
     
     def get_available_manager_for_current_model(self) -> Tuple[Optional[APIKeyManager], Optional[str]]:
         """获取当前优先级模型的可用密钥管理器"""
@@ -241,6 +242,42 @@ class ModelScheduler:
             
             return info
 
+def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_tasks: int):
+    """
+    一个专门的线程，用于从结果队列中获取数据并实时写入文件。
+    它会缓冲乱序的结果，以确保文件内容是按原始顺序写入的。
+    """
+    print(f"--- 写入线程已启动，将结果保存到 {output_filename} ---", file=sys.stderr)
+    
+    results_buffer = {}
+    next_expected_idx = 0
+    processed_count = 0
+    failure_count = 0
+
+    while processed_count < total_tasks:
+        try:
+            result = result_queue.get(timeout=1)
+            
+            processed_count += 1
+            if not result.success:
+                failure_count += 1
+            
+            # 将结果存入缓冲区
+            results_buffer[result.idx] = result.data
+
+            # 检查是否可以写入连续的结果
+            with open(output_filename, "a", encoding="utf-8") as f:
+                while next_expected_idx in results_buffer:
+                    data_to_write = results_buffer.pop(next_expected_idx)
+                    f.write(json.dumps(data_to_write, ensure_ascii=False) + "\n")
+                    next_expected_idx += 1
+            
+            result_queue.task_done()
+        except queue.Empty:
+            continue
+    
+    print(f"\n--- 写入线程完成。共处理 {processed_count} 个任务，其中失败 {failure_count} 个。---", file=sys.stderr)
+
 def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue, 
                  scheduler: ModelScheduler, language: str, thread_id: int):
     """工作线程函数"""
@@ -277,6 +314,9 @@ def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue,
                 task_queue.task_done()
                 continue
             
+            # [核心修改] 在调用API前，先通过全局速率限制器
+            scheduler.enforce_rate_limit()
+
             # 使用选定的管理器和模型处理论文
             result, error = manager.process_paper_with_model(task.data, language, model_name)
             
@@ -389,24 +429,61 @@ def main():
             model_names=model_names,
             prompt_template=prompt_template,
             retries=args.retries,
-            timeout=args.timeout,
-            api_call_interval=api_call_interval
-        )
+            timeout=args.timeout)
         api_managers.append(api_manager)
 
     # 创建模型调度器
-    scheduler = ModelScheduler(api_managers, model_names)
+    scheduler = ModelScheduler(api_managers, model_names, api_call_interval)
 
     # 创建任务队列和结果队列
     task_queue = queue.Queue()
     result_queue = queue.Queue()
+    
+    # [核心改造] 准备输出文件并启动写入线程
+    output_filename = args.data.replace('.jsonl', f'_AI_enhanced_{language}.jsonl')
+    total_tasks = len(data)
+    id_to_idx_map = {item['id']: i for i, item in enumerate(data)}
 
-    # 将所有任务加入队列
+    # --- [新] 断点续传逻辑 ---
+    processed_ids = set()
+    if os.path.exists(output_filename):
+        print(f"发现已存在的输出文件: {output_filename}。进入续传模式。", file=sys.stderr)
+        with open(output_filename, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    processed_data = json.loads(line)
+                    paper_id = processed_data.get('id')
+                    if paper_id and paper_id in id_to_idx_map:
+                        original_idx = id_to_idx_map[paper_id]
+                        # 预填充已完成的结果，这样写入线程就不会永远等待它们
+                        result_queue.put(ProcessingResult(original_idx, processed_data, True))
+                        processed_ids.add(paper_id)
+                except (json.JSONDecodeError, KeyError):
+                    print(f"警告: 在 {output_filename} 中发现无效的JSON行，已跳过。", file=sys.stderr)
+        
+        remaining_tasks = total_tasks - len(processed_ids)
+        print(f"已加载并预填充 {len(processed_ids)} 个已处理任务。剩余任务: {remaining_tasks}", file=sys.stderr)
+    else:
+        print(f"未发现输出文件。将开始全新处理。", file=sys.stderr)
+        # 确保文件是空的，为新运行做准备
+        with open(output_filename, "w", encoding="utf-8") as f:
+            pass
+
+    # 将未处理的任务加入任务队列
     for idx, paper_data in enumerate(data):
-        task_queue.put(ProcessingTask(idx, paper_data))
+        if paper_data.get('id') not in processed_ids:
+            task_queue.put(ProcessingTask(idx, paper_data))
 
     # 启动工作线程
     threads = []
+    
+    # [核心改造] 启动写入线程
+    writer_thread = threading.Thread(
+        target=result_writer_thread,
+        args=(result_queue, output_filename, total_tasks)
+    )
+    writer_thread.start()
+    
     for i in range(max_workers):
         thread = threading.Thread(
             target=worker_thread,
@@ -442,38 +519,15 @@ def main():
     # 发送结束信号给所有线程
     for _ in threads:
         task_queue.put(None)
-
-    # 等待所有线程结束
+    
+    # 等待所有工作线程和写入线程结束
     for thread in threads:
         thread.join()
+    result_queue.join() # 等待结果队列被完全处理
+    writer_thread.join() # 等待写入线程完成
 
     # 记录处理结束时间
     end_time = time.time()
-
-    # 收集结果
-    results = []
-    total_failures = 0
-    
-    while not result_queue.empty():
-        try:
-            result = result_queue.get_nowait()
-            results.append(result)
-            if not result.success:
-                total_failures += 1
-        except queue.Empty:
-            break
-
-    # 按原始顺序排序结果
-    results.sort(key=lambda x: x.idx)
-    enhanced_data = [result.data for result in results]
-
-    # 输出结果
-    output_filename = args.data.replace('.jsonl', f'_AI_enhanced_{language}.jsonl')
-    with open(output_filename, "w", encoding="utf-8") as f:
-        for d_item in enhanced_data:
-            f.write(json.dumps(d_item, ensure_ascii=False) + "\n")
-
-    print(f"\n处理完成。成功处理: {len(enhanced_data) - total_failures}/{len(enhanced_data)}。输出文件: {output_filename}")
     
     # 显示最终统计
     final_info = scheduler.get_current_model_info()
@@ -491,15 +545,15 @@ def main():
     print(f"\n--- 性能与耗时统计 ---", file=sys.stderr)
     print(f"实际总耗时: {actual_elapsed_time:.1f}秒 ({actual_elapsed_time/60:.1f}分钟)", file=sys.stderr)
 
-    if len(enhanced_data) > 0:
-        estimated_time_sequential = len(enhanced_data) * api_call_interval
+    if total_tasks > 0:
+        estimated_time_sequential = total_tasks * api_call_interval
         effective_concurrency = len(api_keys)
-        estimated_concurrent_time = (len(enhanced_data) * api_call_interval) / effective_concurrency
+        estimated_concurrent_time = (total_tasks * api_call_interval) / effective_concurrency
         
         print(f"理论顺序处理时间 (估算): {estimated_time_sequential:.1f}秒 ({estimated_time_sequential/60:.1f}分钟)", file=sys.stderr)
         print(f"理论并发处理时间 (估算): {estimated_concurrent_time:.1f}秒 ({estimated_concurrent_time/60:.1f}分钟)", file=sys.stderr)
         if actual_elapsed_time > 0:
-            print(f"实际处理速度: {len(enhanced_data) / actual_elapsed_time:.2f} 篇/秒", file=sys.stderr)
+            print(f"实际处理速度: {total_tasks / actual_elapsed_time:.2f} 篇/秒", file=sys.stderr)
 
 if __name__ == "__main__":
     main()
