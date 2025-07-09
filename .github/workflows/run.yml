@@ -33,7 +33,6 @@ jobs:
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           uv sync
-          source .venv/bin/activate
 
       - name: Setup Git
         run: |
@@ -47,6 +46,7 @@ jobs:
       - name: "Step 1: Fetch new papers from arXiv"
         id: fetch
         run: |
+          source .venv/bin/activate
           TARGET_DATE="${{ steps.date.outputs.TARGET_DATE }}"
           RAW_JSONL_FILE="data/$TARGET_DATE.jsonl"
           echo "Fetching new papers for $TARGET_DATE..."
@@ -63,6 +63,7 @@ jobs:
       - name: "Step 2: Enhance paper data with AI"
         id: enhance
         run: |
+          source .venv/bin/activate
           RAW_JSONL_FILE="${{ steps.fetch.outputs.raw_file }}"
           echo "Enhancing paper data with AI for file: $RAW_JSONL_FILE..."
           python ai/enhance.py --data "$RAW_JSONL_FILE"
@@ -79,6 +80,7 @@ jobs:
       - name: "Step 3: Build Database, Report and Update README"
         id: build_site
         run: |
+          source .venv/bin/activate
           TARGET_DATE="${{ steps.date.outputs.TARGET_DATE }}"
           ENHANCED_JSONL_FILE="${{ steps.enhance.outputs.enhanced_file }}"
           OUTPUT_MD_FILE="data/$TARGET_DATE.md"
