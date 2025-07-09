@@ -11,6 +11,8 @@ class ArxivPipeline:
             page_size = 100,
             #delay_seconds = 3,
             #num_retries = 5
+            delay_seconds = 1,  # 显式地将API请求延迟设置为1秒
+            num_retries = 5     # 建议也取消注释重试次数，增加健壮性
         )
         self.preference = os.environ.get('CATEGORIES', 'cs.CV, cs.CL').split(',')
         self.preference = list(map(lambda x: x.strip(), self.preference))

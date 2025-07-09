@@ -17,6 +17,14 @@ jobs:
   # --- 任务1: 构建数据和网站文件 ---
   build:
     runs-on: ubuntu-latest
+    # 将环境变量提升到 job 级别，供所有 step 使用
+    env:
+      GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
+      MODEL_PRIORITY_LIST: ${{ vars.MODEL_PRIORITY_LIST }}
+      API_CALL_INTERVAL: ${{ vars.API_CALL_INTERVAL }}
+      LANGUAGE: ${{ vars.LANGUAGE }}
+      CATEGORIES: ${{ vars.CATEGORIES }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,107 +32,85 @@ jobs:
       - name: Install dependencies
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
-          #source /root/.cargo/env
           uv sync
-          # uv pip install google-generativeai
+          #source .venv/bin/activate
 
-      - name: Run Data Processing Pipeline
-        id: run_scripts
-        # --- [核心改造] 更新环境变量以匹配新版 enhance.py ---
-        env:
-          # [新] 从 secrets 中读取统一的、按优先级排列的密钥列表
-          GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
-          # [新] 从 repository variables 中读取统一的、按优先级排列的模型列表
-          MODEL_PRIORITY_LIST: ${{ vars.MODEL_PRIORITY_LIST }}
-          # 其他环境变量保持不变
-          # --- [核心改造] 添加新的环境变量 ---
-          # 从 GitHub Variables 中读取 API 调用间隔时间
-          API_CALL_INTERVAL: ${{ vars.API_CALL_INTERVAL }}
-          LANGUAGE: ${{ vars.LANGUAGE }}
-          CATEGORIES: ${{ vars.CATEGORIES }}
-          # GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          # SECONDARY_GOOGLE_API_KEY: ${{ secrets.SECONDARY_GOOGLE_API_KEY }}
-          # LANGUAGE: ${{ vars.LANGUAGE }}
-          # CATEGORIES: ${{ vars.CATEGORIES }}
-          # MODEL_NAME: ${{ vars.MODEL_NAME }}
-          # FALLBACK_MODELS: ${{ vars.FALLBACK_MODELS }}
-        run: |
-          source .venv/bin/activate
-          
-          # 动态定义文件名
-          # TODAY=$(date +"%Y-%m-%d")
-          # RAW_JSONL_FILE="data/$TODAY.jsonl"
-          # ENHANCED_JSONL_FILE="data/${TODAY}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
-          # OUTPUT_MD_FILE="data/$TODAY.md"
-          # PAPER_TEMPLATE_FILE="to_md/paper_template.md"
-          
-          # 动态定义文件名，获取前一天的日期
-          TARGET_DATE=$(date -d "yesterday" +"%Y-%m-%d")
-          RAW_JSONL_FILE="data/$TARGET_DATE.jsonl"
-          ENHANCED_JSONL_FILE="data/${TARGET_DATE}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
-          OUTPUT_MD_FILE="data/$TARGET_DATE.md"
-          PAPER_TEMPLATE_FILE="to_md/paper_template.md"
-
-          # 步骤 1: 运行Scrapy爬虫
-          echo "Step 1: Fetching new papers from arXiv..."
-          (cd daily_arxiv && scrapy crawl arxiv -o "../$RAW_JSONL_FILE")
-          
-          # 步骤 2: 运行AI增强脚本
-          echo "Step 2: Enhancing paper data with AI..."
-          python ai/enhance.py --data "$RAW_JSONL_FILE"
-          
-          # 步骤 3: 运行数据库构建脚本 (新)
-          echo "Step 3: Building the JSON database for the website..."
-          python build_database.py
-
-          # 步骤 4: 生成Markdown报告
-          echo "Step 4: Generating Markdown report..."
-          python to_md/convert.py --input "$ENHANCED_JSONL_FILE" --template "$PAPER_TEMPLATE_FILE" --output "$OUTPUT_MD_FILE"
-          
-          # 步骤 5: 更新主 README.md
-          echo "Step 5: Updating main README.md..."
-          python update_readme.py
-          
-          echo "report_path=$OUTPUT_MD_FILE" >> $GITHUB_OUTPUT
-
-          echo "工作流成功完成！"
-      
-      #注释    
-      - name: Set Current Date
-        id: date
-        run: echo "TODAY_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-      
-      #注释
-      - name: Create or Update Daily Digest Issue
-        uses: peter-evans/create-issue-from-file@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # **修正**: 从上一步的输出中获取日期
-          # title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TODAY_DATE }}"
-          title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TARGET_DATE }}"
-          content-filepath: "${{ steps.run_scripts.outputs.report_path }}"
-          labels: daily-digest, automated
-      
-      #注释
-      - name: Commit and push changes
+      - name: Setup Git
         run: |
           git config --global user.email "${{ vars.EMAIL }}"
           git config --global user.name "${{ vars.NAME }}"
-          git add .
-          if ! git diff --staged --quiet; then
-            git commit -m "update"
-          else
-            echo "No changes to commit."
-          fi      
-      #注释
-      - name: Pull latest changes
-        run: git pull origin main --rebase
 
-      #注释
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}    
+      - name: Set Target Date
+        id: date
+        run: echo "TARGET_DATE=$(date -d "yesterday" +"%Y-%m-%d")" >> $GITHUB_OUTPUT
+
+      - name: Step 1: Fetch new papers from arXiv
+        id: fetch
+        run: |
+          TARGET_DATE="${{ steps.date.outputs.TARGET_DATE }}"
+          RAW_JSONL_FILE="data/$TARGET_DATE.jsonl"
+          echo "Fetching new papers for $TARGET_DATE..."
+          (cd daily_arxiv && scrapy crawl arxiv -o "../$RAW_JSONL_FILE")
+          echo "raw_file=$RAW_JSONL_FILE" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push Raw Data
+        run: |
+          git pull origin main --rebase
+          git add ${{ steps.fetch.outputs.raw_file }}
+          git commit -m "feat(data): fetch daily papers for ${{ steps.date.outputs.TARGET_DATE }}" || echo "No changes to commit."
+          git push
+
+      - name: Step 2: Enhance paper data with AI
+        id: enhance
+        run: |
+          RAW_JSONL_FILE="${{ steps.fetch.outputs.raw_file }}"
+          echo "Enhancing paper data with AI for file: $RAW_JSONL_FILE..."
+          python ai/enhance.py --data "$RAW_JSONL_FILE"
+          ENHANCED_JSONL_FILE="data/${{ steps.date.outputs.TARGET_DATE }}_AI_enhanced_${LANGUAGE:-Chinese}.jsonl"
+          echo "enhanced_file=$ENHANCED_JSONL_FILE" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push Enhanced Data
+        run: |
+          git pull origin main --rebase
+          git add ${{ steps.enhance.outputs.enhanced_file }}
+          git commit -m "feat(data): enhance papers for ${{ steps.date.outputs.TARGET_DATE }}" || echo "No changes to commit."
+          git push
+
+      - name: Step 3: Build Database, Report and Update README
+        id: build_site
+        run: |
+          TARGET_DATE="${{ steps.date.outputs.TARGET_DATE }}"
+          ENHANCED_JSONL_FILE="${{ steps.enhance.outputs.enhanced_file }}"
+          OUTPUT_MD_FILE="data/$TARGET_DATE.md"
+          PAPER_TEMPLATE_FILE="to_md/paper_template.md"
+
+          echo "Building the JSON database for the website..."
+          python build_database.py
+
+          echo "Generating Markdown report..."
+          python to_md/convert.py --input "$ENHANCED_JSONL_FILE" --template "$PAPER_TEMPLATE_FILE" --output "$OUTPUT_MD_FILE"
+
+          echo "Updating main README.md..."
+          python update_readme.py
+
+          echo "report_path=$OUTPUT_MD_FILE" >> $GITHUB_OUTPUT
+
+      - name: Commit and Push Website/Report Files
+        run: |
+          git pull origin main --rebase
+          git add docs/ data/*.md README.md
+          git commit -m "build(site): update database, report, and README for ${{ steps.date.outputs.TARGET_DATE }}" || echo "No changes to commit."
+          git push
+
+      # --- [可选] 创建每日速报 Issue ---
+      # 如果需要，可以取消下面的注释来重新启用此功能
+      # - name: Create or Update Daily Digest Issue
+      #   uses: peter-evans/create-issue-from-file@v5
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     title: "每日速报 (Daily Digest): ${{ steps.date.outputs.TARGET_DATE }}"
+      #     content-filepath: "${{ steps.build_site.outputs.report_path }}"
+      #     labels: daily-digest, automated
 
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5

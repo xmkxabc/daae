@@ -18,7 +18,8 @@ class ArxivSpider2(scrapy.Spider):
         super().__init__(*args, **kwargs)
 
         # 1. 配置分类和起始URL
-        categories_str = os.environ.get("CATEGORIES", "cs.CV,cs.AI") # 默认爬取计算机视觉和人工智能
+        categories_str = os.environ.get("CATEGORIES", "cs.CR") # 默认爬取计算机视觉和人工智能
+        # categories_str = os.environ.get("CATEGORIES", "cs.CR,cs.AI,cs.LG,cs.MA,cs.RO,cs.CV,cs.HC,cs.ET,cs.SE,cs.SI,cs.NI,cs.IT,cs.AR,cs.DC,cs.CY,cs.CE,cs.FL,eess.SY,eess.SP,eess.IV,eess.AS,cs.CL,cs.DS,cs.GR,cs.IR,cs.NE,math.NA,cs.SD,cs.SC,cs.SY,cs.TO") # 默认爬取计算机视觉和人工智能
         self.categories_list = [cat.strip() for cat in categories_str.split(",")]
         self.start_urls = [f"https://arxiv.org/list/{cat}/new" for cat in self.categories_list]
         self.logger.info(f"Starting spider for categories: {self.categories_list}")
@@ -44,32 +45,11 @@ class ArxivSpider2(scrapy.Spider):
     def parse(self, response):
         self.logger.info(f"Parsing page: {response.url}")
 
-        # 3. 智能跳过页面底部的 "total X entries" 链接
-        # 这个链接的锚点是最大的，但它不是一篇论文，需要跳过
-        total_entries_anchor = response.css("div#dlpage > ul > li:last-child a::attr(href)").get()
-        skip_anchor_num = float('inf') # 默认为无穷大，即不跳过任何论文
-        if total_entries_anchor and 'item' in total_entries_anchor:
-            try:
-                # 提取这个最大锚点的数字
-                skip_anchor_num = int(total_entries_anchor.split('item')[-1])
-            except (ValueError, IndexError):
-                self.logger.warning("Could not parse the 'total entries' anchor number.")
-
         # 遍历页面上每一篇论文的条目
         for paper in response.css("dl dt"):
-            # 提取当前论文的锚点数字
             paper_anchor = paper.css("a[name^='item']::attr(name)").get()
             if not paper_anchor:
                 continue # 如果没有锚点，跳过这个dt（可能是无效条目）
-            
-            try:
-                paper_id_num = int(paper_anchor.split("item")[-1])
-            except (ValueError, IndexError):
-                continue
-            
-            # 如果当前论文的锚点数字大于或等于要跳过的数字，则停止处理
-            if paper_id_num >= skip_anchor_num:
-                continue
 
             # 4. 提取核心信息，并进行健壮性检查
             abstract_link = paper.css("a[title='Abstract']::attr(href)").get()
@@ -94,7 +74,10 @@ class ArxivSpider2(scrapy.Spider):
             comments = self.get_clean_text(paper_dd, ".list-comments")
 
             # 解析分类代码
-            paper_categories = set(re.findall(r'cs\.[A-Z]{2}|stat\.[A-Z]{2}|eess\.[A-Z]{2}', subjects_text))
+            # 修复：使用更健壮的正则表达式来提取所有括号内的分类代码。
+            # 旧的正则表达式 r'cs\.[A-Z]{2}|...' 会漏掉很多非cs/stat/eess领域或格式不符的分类。
+            # 新的表达式 `r'\(([^)]+)\)'` 会提取所有在括号里的代码，例如 (cs.CV), (math.NA) 等。
+            paper_categories = set(re.findall(r'\(([^)]+)\)', subjects_text))
 
             # 6. 执行分类筛选逻辑（如果已启用）
             if self.filter_by_category and not self.target_categories.intersection(paper_categories):
