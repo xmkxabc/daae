@@ -5,11 +5,11 @@ import dotenv
 import argparse
 import time
 import threading
+import signal
 import queue
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, DefaultDict
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import langchain_core.exceptions
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -33,6 +33,34 @@ except FileNotFoundError as e:
     print(f"错误：找不到必需的模板文件: {e}。搜索路径: {script_dir}", file=sys.stderr)
     sys.exit(1)
 
+# 全局关闭事件
+shutdown_event = threading.Event()
+
+class SlidingWindowRateLimiter:
+    """
+    一个线程安全的速率限制器，使用滑动窗口算法。
+    它允许多个线程在不超过指定速率限制的情况下并发执行。
+    """
+    def __init__(self, rate_limit: int, time_period: int = 60):
+        self.rate_limit = rate_limit  # 例如: 60 (次)
+        self.time_period = time_period # 例如: 60 (秒)
+        self.timestamps = deque()
+        self.lock = threading.Lock()
+
+    def acquire(self):
+        """获取一个许可，如果达到速率限制则阻塞等待。"""
+        with self.lock:
+            now = time.time()
+            # 移除时间窗口之外的旧时间戳
+            while self.timestamps and self.timestamps[0] <= now - self.time_period:
+                self.timestamps.popleft()
+
+            if len(self.timestamps) >= self.rate_limit:
+                wait_time = (self.timestamps[0] + self.time_period) - now
+                if wait_time > 0:
+                    time.sleep(wait_time)
+            
+            self.timestamps.append(time.time())
 
 @dataclass
 class ProcessingTask:
@@ -52,8 +80,8 @@ class ProcessingResult:
 class APIKeyManager:
     """API密钥管理器，负责管理单个密钥的速率限制和调用"""
     
-    def __init__(self, api_key: str, key_name: str, model_names: List[str],
-                 prompt_template, retries: int = 3, timeout: int = 1):
+    def __init__(self, api_key: str, key_name: str, model_names: List[str], prompt_template,
+                 retries: int = 3, timeout: int = 1, api_call_interval: float = 1.1):
         self.api_key = api_key
         self.key_name = key_name
         self.model_names = model_names
@@ -61,7 +89,9 @@ class APIKeyManager:
         self.retries = retries
         self.timeout = timeout
         self.lock = threading.Lock()
-        
+
+        # [核心优化] 使用滑动窗口速率限制器
+        self.rate_limiter = SlidingWindowRateLimiter(rate_limit=int(60 / api_call_interval))
         # 跟踪每个模型的配额状态
         self.model_quota_exhausted = {model: False for model in model_names}
         # [新] 跟踪每个模型的冷却状态
@@ -86,16 +116,18 @@ class APIKeyManager:
     
     def is_model_available(self, model_name: str) -> bool:
         """检查模型是否可用（未耗尽配额）"""
-        if self.model_quota_exhausted.get(model_name, False):
-            return False
-        # [新] 检查模型是否在冷却期
-        if time.time() < self.model_cooldown_until.get(model_name, 0):
-            return False
-        return True
+        with self.lock:
+            if self.model_quota_exhausted.get(model_name, False):
+                return False
+            # [新] 检查模型是否在冷却期
+            if time.time() < self.model_cooldown_until.get(model_name, 0):
+                return False
+            return True
     
     def mark_model_exhausted(self, model_name: str):
         """标记模型配额已耗尽"""
-        self.model_quota_exhausted[model_name] = True
+        with self.lock:
+            self.model_quota_exhausted[model_name] = True
         print(f"  ! 模型 {model_name} 在<{self.key_name}>上配额耗尽", file=sys.stderr)
     
     def set_model_cooldown(self, model_name: str, duration: int = 65):
@@ -103,8 +135,15 @@ class APIKeyManager:
         当遇到临时速率限制时，为模型设置一个冷却期。
         默认为65秒，以安全地度过“每分钟请求数”的限制。
         """
-        self.model_cooldown_until[model_name] = int(time.time() + duration)
+        with self.lock:
+            self.model_cooldown_until[model_name] = int(time.time() + duration)
         print(f"  ! 速率限制: <{self.key_name}> - {model_name} 进入冷却 {duration} 秒", file=sys.stderr)
+
+    def enforce_rate_limit(self):
+        """
+        [核心优化] 使用滑动窗口算法来执行速率限制。
+        """
+        self.rate_limiter.acquire()
     
     def process_paper_with_model(self, paper_data: Dict, language: str, model_name: str) -> Tuple[Optional[Dict], Optional[str]]:
         """使用指定模型处理单篇论文"""
@@ -117,6 +156,9 @@ class APIKeyManager:
         chain = self.model_chains.get(model_name)
         if not chain:
             return None, f"模型 {model_name} 未初始化"
+            
+        # [优化] 在确认模型可用后，再执行速率限制，避免不必要的等待
+        self.enforce_rate_limit()
             
         for attempt in range(self.retries):
             print(f"  线程<{self.key_name}>使用: {model_name} (尝试 {attempt + 1}/{self.retries})", file=sys.stderr)
@@ -160,14 +202,10 @@ class APIKeyManager:
 class ModelScheduler:
     """模型调度器，管理按优先级分层的任务分配"""
     
-    def __init__(self, api_managers: List[APIKeyManager], model_names: List[str], api_call_interval: int):
+    def __init__(self, api_managers: List[APIKeyManager], model_names: List[str]):
         self.api_managers = api_managers
         self.model_names = model_names
         self.current_model_index = 0
-        # [新] 全局速率限制器
-        self.api_call_interval = api_call_interval
-        self.last_api_call_time = 0
-        self.rate_limit_lock = threading.Lock()
 
         self.last_used_manager_indices: DefaultDict[str, int] = defaultdict(int)
         self.lock = threading.Lock()
@@ -184,17 +222,6 @@ class ModelScheduler:
             print(f"  优先级 {i+1}: {model} - 可用密钥: {available_keys}个", file=sys.stderr)
         print("-------------------------", file=sys.stderr)
 
-    def enforce_rate_limit(self):
-        """
-        [新] 全局速率限制方法。所有线程在调用API前都必须调用此方法。
-        """
-        with self.rate_limit_lock:
-            current_time = time.time()
-            time_since_last_call = current_time - self.last_api_call_time
-            if time_since_last_call < self.api_call_interval:
-                time.sleep(self.api_call_interval - time_since_last_call)
-            self.last_api_call_time = time.time()
-    
     def get_available_manager_for_current_model(self) -> Tuple[Optional[APIKeyManager], Optional[str]]:
         """获取当前优先级模型的可用密钥管理器"""
         with self.lock:
@@ -242,7 +269,8 @@ class ModelScheduler:
             
             return info
 
-def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_tasks: int):
+def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_tasks: int,
+                         initial_next_idx: int, initial_processed_count: int):
     """
     一个专门的线程，用于从结果队列中获取数据并实时写入文件。
     它会缓冲乱序的结果，以确保文件内容是按原始顺序写入的。
@@ -250,17 +278,22 @@ def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_
     print(f"--- 写入线程已启动，将结果保存到 {output_filename} ---", file=sys.stderr)
     
     results_buffer = {}
-    next_expected_idx = 0
-    processed_count = 0
-    failure_count = 0
+    next_expected_idx = initial_next_idx
+    processed_count = initial_processed_count
+    failure_count = 0 # 失败计数在每次运行时重置
 
-    while processed_count < total_tasks:
+    # 当 (收到关闭信号 且 结果队列已空) 或 (所有任务都已处理完) 时，循环结束
+    while not (shutdown_event.is_set() and result_queue.empty()) and processed_count < total_tasks:
         try:
             result = result_queue.get(timeout=1)
             
             processed_count += 1
             if not result.success:
                 failure_count += 1
+
+            # 如果收到关闭信号，只处理队列中剩余的结果，不再等待新结果
+            if shutdown_event.is_set():
+                print(f"写入线程(关闭模式): 正在清空结果队列... 剩余 {result_queue.qsize()} 项", file=sys.stderr)
             
             # 将结果存入缓冲区
             results_buffer[result.idx] = result.data
@@ -274,77 +307,74 @@ def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_
             
             result_queue.task_done()
         except queue.Empty:
+            # 在正常运行时，队列为空就继续等待
+            # 如果收到了关闭信号，并且队列已空，上面的 while 条件会使其退出
             continue
     
     print(f"\n--- 写入线程完成。共处理 {processed_count} 个任务，其中失败 {failure_count} 个。---", file=sys.stderr)
 
+def _handle_task_failure(task: ProcessingTask, result_queue: queue.Queue, error_message: str, log_prefix: str):
+    """统一处理任务的最终失败，记录错误并放入结果队列。"""
+    print(f"{log_prefix}: {error_message}", file=sys.stderr)
+    task.data['AI'] = {field: error_message for field in Structure.model_fields.keys()}
+    result_queue.put(ProcessingResult(task.idx, task.data, False, error_message))
+
 def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue, 
                  scheduler: ModelScheduler, language: str, thread_id: int):
-    """工作线程函数"""
-    while True:
+    """工作线程函数，会检查全局关闭事件"""
+    while not shutdown_event.is_set():
         try:
             task = task_queue.get(timeout=1)
-            if task is None:  # 结束信号
-                break
-                
-            # [新] 引入任务级重试，从之前的版本继承
+        except queue.Empty:
+            continue
+
+        if task is None:
+            break  # 结束信号
+
+        try:
+            log_prefix = f"线程{thread_id} (任务 {task.data['id']})"
+
+            # 1. 检查是否超过最大重试次数
             max_task_retries = int(os.environ.get("MAX_TASK_RETRIES", 5))
             if task.retry_count >= max_task_retries:
                 error_message = f"任务超过最大重试次数 ({max_task_retries}次)，已放弃"
-                print(f"线程{thread_id}放弃任务: {task.data['id']} - {error_message}", file=sys.stderr)
-                task.data['AI'] = {field: error_message for field in Structure.model_fields.keys()}
-                processing_result = ProcessingResult(task.idx, task.data, False, error_message)
-                result_queue.put(processing_result)
-                task_queue.task_done()
+                _handle_task_failure(task, result_queue, error_message, log_prefix)
                 continue
 
             print(f"线程{thread_id}正在处理: {task.idx + 1} - {task.data['id']} (尝试次数: {task.retry_count + 1})", file=sys.stderr)
-            
-            # 获取可用的管理器和模型
+
+            # 2. 从调度器获取可用模型
             manager, model_name = scheduler.get_available_manager_for_current_model()
-            
             if not manager or not model_name:
-                # [核心改进] 如果暂时没有可用模型（可能都在冷却），不要立即失败。
-                # 将任务重新排队，并等待一小段时间，避免CPU空转。
-                error_message = "暂时无可用模型，任务将重新排队"
-                print(f"线程{thread_id}发现: {error_message}", file=sys.stderr)
+                print(f"{log_prefix}: 暂时无可用模型，任务将重新排队", file=sys.stderr)
                 task.retry_count += 1
                 task_queue.put(task)
-                time.sleep(5) # 等待5秒，给密钥一些冷却恢复的时间
-                task_queue.task_done()
+                time.sleep(5)
                 continue
-            
-            # [核心修改] 在调用API前，先通过全局速率限制器
-            scheduler.enforce_rate_limit()
 
-            # 使用选定的管理器和模型处理论文
+            # 3. 处理任务
             result, error = manager.process_paper_with_model(task.data, language, model_name)
-            
+
+            # 4. 根据结果进行处理
             if result:
                 task.data['AI'] = result
-                processing_result = ProcessingResult(task.idx, task.data, True)
-                print(f"线程{thread_id}成功处理: {task.data['id']} 使用 {model_name}", file=sys.stderr)
+                result_queue.put(ProcessingResult(task.idx, task.data, True))
+                print(f"{log_prefix}: 成功处理，使用 {model_name}", file=sys.stderr)
+            elif "配额耗尽" in str(error) or "速率限制" in str(error) or "冷却中" in str(error):
+                print(f"{log_prefix}: 处理失败，重新排队 - {error}", file=sys.stderr)
+                task.retry_count += 1
+                task_queue.put(task)
             else:
-                error_message = "错误：AI分析失败。"
-                task.data['AI'] = {field: error_message for field in Structure.model_fields.keys()}
-                processing_result = ProcessingResult(task.idx, task.data, False, error)
-                print(f"线程{thread_id}处理失败: {task.data['id']} - {error}", file=sys.stderr)
-                
-                # [改进] 如果是配额耗尽或速率限制，将任务重新放回队列
-                if "配额耗尽" in str(error) or "速率限制" in str(error) or "冷却中" in str(error):
-                    task.retry_count += 1
-                    task_queue.put(task)  # 重新排队
-                    task_queue.task_done()
-                    continue
-                
-            result_queue.put(processing_result)
-            
-        except queue.Empty:
-            continue
+                error_message = f"AI分析失败 ({error})"
+                _handle_task_failure(task, result_queue, error_message, log_prefix)
+
         except Exception as e:
-            print(f"线程{thread_id}发生异常: {e}", file=sys.stderr)
+            print(f"线程{thread_id}在处理任务 {task.idx if task else 'N/A'} 时发生意外异常: {e}", file=sys.stderr)
+            if task:
+                task.retry_count += 1
+                task_queue.put(task) # 发生未知异常时也重新入队
         finally:
-            task_queue.task_done()
+            task_queue.task_done() # 这是唯一调用task_done的地方
 
 def parse_args():
     """解析命令行参数。"""
@@ -367,6 +397,50 @@ def is_response_valid(result: Structure):
             return False
     return True
 
+def signal_handler(sig, frame):
+    """处理 Ctrl+C 信号"""
+    if not shutdown_event.is_set():
+        print("\nCtrl+C detected! Initiating graceful shutdown...", file=sys.stderr)
+        shutdown_event.set()
+
+def setup_resume_logic(output_filename: str, id_to_idx_map: Dict[str, int]) -> Tuple[set, int, int]:
+    """
+    处理断点续传逻辑。
+    检查输出文件，加载已处理的任务，并确定下一次写入的起始点。
+    返回: (已处理ID集合, 下一个写入索引, 已处理任务计数)
+    """
+    processed_ids = set()
+    initial_next_idx = 0
+    initial_processed_count = 0
+    if os.path.exists(output_filename):
+        print(f"发现已存在的输出文件: {output_filename}。进入续传模式。", file=sys.stderr)
+        temp_results = {}
+        try:
+            with open(output_filename, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        processed_data = json.loads(line)
+                        paper_id = processed_data.get('id')
+                        if paper_id and paper_id in id_to_idx_map:
+                            original_idx = id_to_idx_map[paper_id]
+                            temp_results[original_idx] = processed_data
+                            processed_ids.add(paper_id)
+                    except (json.JSONDecodeError, KeyError):
+                        print(f"警告: 在 {output_filename} 中发现无效的JSON行，已跳过。", file=sys.stderr)
+            
+            while initial_next_idx in temp_results:
+                initial_next_idx += 1
+            
+            if initial_next_idx < len(temp_results):
+                print(f"警告: 输出文件 {output_filename} 存在不连续的条目。将从最后一个连续条目 {initial_next_idx - 1} 处截断并继续。", file=sys.stderr)
+                contiguous_lines = [json.dumps(temp_results[i], ensure_ascii=False) + "\n" for i in range(initial_next_idx)]
+                with open(output_filename, 'w', encoding='utf-8') as f:
+                    f.writelines(contiguous_lines)
+                processed_ids = {temp_results[i]['id'] for i in range(initial_next_idx)}
+        except Exception as e:
+            print(f"错误: 读取已存在的输出文件时发生错误: {e}。将作为新任务运行。", file=sys.stderr)
+    return processed_ids, initial_next_idx, len(processed_ids)
+
 def main():
     """主函数，运行增强过程。"""
     args = parse_args()
@@ -374,8 +448,8 @@ def main():
     # --- [核心改造] 加载统一的密钥和模型优先级列表 ---
     google_api_keys_str = os.environ.get("GOOGLE_API_KEYS") # e.g., "key1,key2,key3"
     model_priority_list_str = os.environ.get("MODEL_PRIORITY_LIST")
-    # [新] 从环境变量加载API调用间隔，默认为10秒以遵循Google Free Tier常见的 6 RPM (每分钟请求数) 限制
-    api_call_interval = int(os.environ.get("API_CALL_INTERVAL", 10))
+    # [新] 从环境变量加载API调用间隔，默认为1.1秒以遵循Google Free Tier常见的 60 RPM (每分钟请求数) 限制
+    api_call_interval = float(os.environ.get("API_CALL_INTERVAL", 1.1))
 
     if not google_api_keys_str or not model_priority_list_str:
         print("错误: 请在 .env 文件中设置 GOOGLE_API_KEYS 和 MODEL_PRIORITY_LIST 环境变量。", file=sys.stderr)
@@ -395,7 +469,7 @@ def main():
     print(f"API密钥数量: {len(api_keys)}", file=sys.stderr)
     print(f"模型优先级: {model_names}", file=sys.stderr)
     print(f"工作线程数: {max_workers}", file=sys.stderr)
-    print(f"API调用间隔: {api_call_interval}秒 (约每分钟 {60/api_call_interval:.1f} 次)", file=sys.stderr)
+    print(f"速率限制 (每个密钥): {60/api_call_interval:.1f} RPM (每分钟请求数)", file=sys.stderr)
     print("-----------------------------", file=sys.stderr)
 
     language = os.environ.get("LANGUAGE", 'Chinese')
@@ -429,11 +503,12 @@ def main():
             model_names=model_names,
             prompt_template=prompt_template,
             retries=args.retries,
-            timeout=args.timeout)
+            timeout=args.timeout,
+            api_call_interval=api_call_interval)
         api_managers.append(api_manager)
 
     # 创建模型调度器
-    scheduler = ModelScheduler(api_managers, model_names, api_call_interval)
+    scheduler = ModelScheduler(api_managers, model_names)
 
     # 创建任务队列和结果队列
     task_queue = queue.Queue()
@@ -443,26 +518,12 @@ def main():
     output_filename = args.data.replace('.jsonl', f'_AI_enhanced_{language}.jsonl')
     total_tasks = len(data)
     id_to_idx_map = {item['id']: i for i, item in enumerate(data)}
+    
+    # [新] 调用辅助函数处理断点续传
+    processed_ids, initial_next_idx, initial_processed_count = setup_resume_logic(output_filename, id_to_idx_map)
 
-    # --- [新] 断点续传逻辑 ---
-    processed_ids = set()
-    if os.path.exists(output_filename):
-        print(f"发现已存在的输出文件: {output_filename}。进入续传模式。", file=sys.stderr)
-        with open(output_filename, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    processed_data = json.loads(line)
-                    paper_id = processed_data.get('id')
-                    if paper_id and paper_id in id_to_idx_map:
-                        original_idx = id_to_idx_map[paper_id]
-                        # 预填充已完成的结果，这样写入线程就不会永远等待它们
-                        result_queue.put(ProcessingResult(original_idx, processed_data, True))
-                        processed_ids.add(paper_id)
-                except (json.JSONDecodeError, KeyError):
-                    print(f"警告: 在 {output_filename} 中发现无效的JSON行，已跳过。", file=sys.stderr)
-        
-        remaining_tasks = total_tasks - len(processed_ids)
-        print(f"已加载并预填充 {len(processed_ids)} 个已处理任务。剩余任务: {remaining_tasks}", file=sys.stderr)
+    if initial_processed_count > 0:
+        print(f"已加载 {initial_processed_count} 个已处理任务。将从索引 {initial_next_idx} 开始写入。剩余任务: {total_tasks - initial_processed_count}", file=sys.stderr)
     else:
         print(f"未发现输出文件。将开始全新处理。", file=sys.stderr)
         # 确保文件是空的，为新运行做准备
@@ -480,7 +541,7 @@ def main():
     # [核心改造] 启动写入线程
     writer_thread = threading.Thread(
         target=result_writer_thread,
-        args=(result_queue, output_filename, total_tasks)
+        args=(result_queue, output_filename, total_tasks, initial_next_idx, initial_processed_count)
     )
     writer_thread.start()
     
@@ -510,17 +571,29 @@ def main():
     monitor_thread.daemon = True
     monitor_thread.start()
 
+    # 注册信号处理器
+    signal.signal(signal.SIGINT, signal_handler)
+
     # 记录处理开始时间
     start_time = time.time()
 
-    # 等待所有任务完成
-    task_queue.join()
+    # 等待所有任务完成，或直到收到关闭信号
+    try:
+        while not task_queue.empty() and not shutdown_event.is_set():
+            time.sleep(1) # 允许主线程响应信号
+
+        if not shutdown_event.is_set():
+            print("所有任务已进入队列，等待处理完成...", file=sys.stderr)
+            task_queue.join() # 正常完成
+        else:
+            print("关闭信号已接收，等待工作线程完成当前任务...", file=sys.stderr)
+
+    except (KeyboardInterrupt, SystemExit):
+        shutdown_event.set()
 
     # 发送结束信号给所有线程
     for _ in threads:
         task_queue.put(None)
-    
-    # 等待所有工作线程和写入线程结束
     for thread in threads:
         thread.join()
     result_queue.join() # 等待结果队列被完全处理
@@ -552,7 +625,7 @@ def main():
         
         print(f"理论顺序处理时间 (估算): {estimated_time_sequential:.1f}秒 ({estimated_time_sequential/60:.1f}分钟)", file=sys.stderr)
         print(f"理论并发处理时间 (估算): {estimated_concurrent_time:.1f}秒 ({estimated_concurrent_time/60:.1f}分钟)", file=sys.stderr)
-        if actual_elapsed_time > 0:
+        if actual_elapsed_time > 0 and total_tasks > initial_processed_count:
             print(f"实际处理速度: {total_tasks / actual_elapsed_time:.2f} 篇/秒", file=sys.stderr)
 
 if __name__ == "__main__":
