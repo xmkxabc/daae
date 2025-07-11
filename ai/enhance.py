@@ -10,6 +10,7 @@ import queue
 from dataclasses import dataclass
 from typing import List, Dict, Optional, Tuple, DefaultDict
 from collections import defaultdict, deque
+from enum import Enum
 
 import langchain_core.exceptions
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -59,8 +60,9 @@ class SlidingWindowRateLimiter:
                 wait_time = (self.timestamps[0] + self.time_period) - now
                 if wait_time > 0:
                     time.sleep(wait_time)
+                    now = time.time()  # 等待后更新时间戳
             
-            self.timestamps.append(time.time())
+            self.timestamps.append(now)  # 使用一致的时间戳
 
 @dataclass
 class ProcessingTask:
@@ -68,6 +70,12 @@ class ProcessingTask:
     idx: int
     data: Dict
     retry_count: int = 0
+    last_error_type: Optional['ErrorType'] = None
+    retry_history: Optional[List[Tuple['ErrorType', float]]] = None  # (错误类型, 重试时间)
+    
+    def __post_init__(self):
+        if self.retry_history is None:
+            self.retry_history = []
     
 @dataclass
 class ProcessingResult:
@@ -76,6 +84,133 @@ class ProcessingResult:
     data: Dict
     success: bool
     error_message: Optional[str] = None
+
+# 错误类型枚举
+class ErrorType(Enum):
+    QUOTA_EXHAUSTED = "quota_exhausted"
+    RATE_LIMITED = "rate_limited"
+    MODEL_NOT_FOUND = "model_not_found"
+    INVALID_RESPONSE = "invalid_response"
+    NETWORK_ERROR = "network_error"
+    UNKNOWN_ERROR = "unknown_error"
+
+# 重试策略配置
+@dataclass
+class RetryConfig:
+    max_retries: int
+    base_delay: float
+    max_delay: float
+    backoff_multiplier: float = 2.0
+    jitter: bool = True
+
+# 智能重试策略管理器
+class SmartRetryStrategy:
+    def __init__(self):
+        self.strategies = {
+            ErrorType.QUOTA_EXHAUSTED: RetryConfig(max_retries=0, base_delay=0, max_delay=0),  # 不重试
+            ErrorType.RATE_LIMITED: RetryConfig(max_retries=3, base_delay=65, max_delay=300),  # 长时间等待
+            ErrorType.MODEL_NOT_FOUND: RetryConfig(max_retries=0, base_delay=0, max_delay=0),  # 不重试
+            ErrorType.INVALID_RESPONSE: RetryConfig(max_retries=2, base_delay=1, max_delay=10),  # 短时间重试
+            ErrorType.NETWORK_ERROR: RetryConfig(max_retries=5, base_delay=2, max_delay=60),  # 指数退避
+            ErrorType.UNKNOWN_ERROR: RetryConfig(max_retries=3, base_delay=5, max_delay=30),  # 中等重试
+        }
+    
+    def get_delay(self, error_type: ErrorType, attempt: int) -> float:
+        """计算重试延迟时间"""
+        config = self.strategies.get(error_type, self.strategies[ErrorType.UNKNOWN_ERROR])
+        
+        if attempt >= config.max_retries:
+            return -1  # 不再重试
+            
+        delay = min(config.base_delay * (config.backoff_multiplier ** attempt), config.max_delay)
+        
+        # 添加随机抖动以避免雷群效应
+        if config.jitter:
+            import random
+            delay *= (0.5 + random.random() * 0.5)
+            
+        return delay
+    
+    def should_retry(self, error_type: ErrorType, attempt: int) -> bool:
+        """判断是否应该重试"""
+        config = self.strategies.get(error_type, self.strategies[ErrorType.UNKNOWN_ERROR])
+        return attempt < config.max_retries
+
+# 结果质量验证器
+class ResultQualityValidator:
+    def __init__(self):
+        self.min_length_thresholds = {
+            'chinese_title': 5,
+            'chinese_summary': 50,
+            'significance': 20,
+            'innovation': 20,
+            'methodology': 30,
+            'implications': 30,
+        }
+        
+    def validate_result(self, result: Dict, original_data: Dict) -> Tuple[bool, List[str]]:
+        """
+        验证AI生成结果的质量
+        返回: (是否通过验证, 错误列表)
+        """
+        errors = []
+        
+        if not result or not isinstance(result, dict):
+            errors.append("结果为空或格式不正确")
+            return False, errors
+            
+        # 检查必需字段
+        required_fields = list(Structure.model_fields.keys())
+        for field in required_fields:
+            if field not in result:
+                errors.append(f"缺少必需字段: {field}")
+                continue
+                
+            value = result[field]
+            if not value or not isinstance(value, str):
+                errors.append(f"字段 {field} 为空或类型不正确")
+                continue
+                
+            # 检查长度
+            min_length = self.min_length_thresholds.get(field, 10)
+            if len(value.strip()) < min_length:
+                errors.append(f"字段 {field} 内容过短 (少于 {min_length} 字符)")
+                
+        # 检查内容质量
+        if len(errors) == 0:
+            quality_errors = self._validate_content_quality(result, original_data)
+            errors.extend(quality_errors)
+            
+        return len(errors) == 0, errors
+    
+    def _validate_content_quality(self, result: Dict, original_data: Dict) -> List[str]:
+        """验证内容质量"""
+        errors = []
+        
+        # 检查是否包含原文关键信息
+        original_title = original_data.get('title', '').lower()
+        chinese_title = result.get('chinese_title', '').lower()
+        
+        # 简单的关键词检查 (可以根据需要扩展)
+        if original_title and chinese_title:
+            # 检查是否有明显的翻译关系 (这里做简单检查)
+            if len(chinese_title) < 3:
+                errors.append("中文标题过短，可能翻译不完整")
+                
+        # 检查是否包含明显的错误标识
+        error_indicators = ['处理失败', 'error', 'failed', '无法', '错误']
+        for field_name, content in result.items():
+            if any(indicator in content.lower() for indicator in error_indicators):
+                errors.append(f"字段 {field_name} 包含错误标识符")
+                
+        # 检查内容是否过于重复
+        all_values = [v for v in result.values() if isinstance(v, str)]
+        if len(all_values) > 1:
+            unique_content = set(v.strip() for v in all_values)
+            if len(unique_content) < len(all_values) * 0.7:  # 如果70%以上内容重复
+                errors.append("生成内容存在过多重复")
+                
+        return errors
 
 class APIKeyManager:
     """API密钥管理器，负责管理单个密钥的速率限制和调用"""
@@ -97,9 +232,29 @@ class APIKeyManager:
         # [新] 跟踪每个模型的冷却状态
         self.model_cooldown_until = {model: 0 for model in model_names}
         
+        # [新增] 智能重试策略和结果验证器
+        self.retry_strategy = SmartRetryStrategy()
+        self.quality_validator = ResultQualityValidator()
+        
         # 初始化模型链
         self.model_chains = {}
         self._init_model_chains()
+    
+    def _classify_error(self, exception: Exception) -> ErrorType:
+        """根据异常类型和错误信息分类错误"""
+        error_str = str(exception).lower()
+        
+        if isinstance(exception, google_exceptions.ResourceExhausted):
+            if "per day" in error_str or "daily" in error_str:
+                return ErrorType.QUOTA_EXHAUSTED
+            else:
+                return ErrorType.RATE_LIMITED
+        elif isinstance(exception, google_exceptions.NotFound):
+            return ErrorType.MODEL_NOT_FOUND
+        elif "timeout" in error_str or "connection" in error_str:
+            return ErrorType.NETWORK_ERROR
+        else:
+            return ErrorType.UNKNOWN_ERROR
     
     def _init_model_chains(self):
         """初始化所有模型链"""
@@ -145,17 +300,17 @@ class APIKeyManager:
         """
         self.rate_limiter.acquire()
     
-    def process_paper_with_model(self, paper_data: Dict, language: str, model_name: str) -> Tuple[Optional[Dict], Optional[str]]:
-        """使用指定模型处理单篇论文"""
+    def process_paper_with_model(self, paper_data: Dict, language: str, model_name: str, task: Optional['ProcessingTask'] = None) -> Tuple[Optional[Dict], Optional[str], Optional['ErrorType']]:
+        """使用指定模型处理单篇论文，支持智能重试和结果验证"""
         if not self.is_model_available(model_name):
             # [改进] 提供更明确的不可用原因
             if time.time() < self.model_cooldown_until.get(model_name, 0):
-                return None, f"模型 {model_name} 正在冷却中"
-            return None, f"模型 {model_name} 配额已耗尽"
+                return None, f"模型 {model_name} 正在冷却中", ErrorType.RATE_LIMITED
+            return None, f"模型 {model_name} 配额已耗尽", ErrorType.QUOTA_EXHAUSTED
             
         chain = self.model_chains.get(model_name)
         if not chain:
-            return None, f"模型 {model_name} 未初始化"
+            return None, f"模型 {model_name} 未初始化", ErrorType.MODEL_NOT_FOUND
             
         # [优化] 在确认模型可用后，再执行速率限制，避免不必要的等待
         self.enforce_rate_limit()
@@ -168,36 +323,82 @@ class APIKeyManager:
                     "content": paper_data['summary'],
                     "language": language
                 })
-                if response_object and is_response_valid(response_object):
-                    return response_object.model_dump(), None
+                
+                if not response_object:
+                    error_type = ErrorType.INVALID_RESPONSE
+                    if task and self.retry_strategy.should_retry(error_type, attempt):
+                        delay = self.retry_strategy.get_delay(error_type, attempt)
+                        if delay > 0:
+                            print(f"  > 响应为空，{delay:.1f}秒后重试...", file=sys.stderr)
+                            time.sleep(delay)
+                            continue
+                    return None, "响应为空", error_type
+                
+                # 基本验证
+                if not is_response_valid(response_object):
+                    error_type = ErrorType.INVALID_RESPONSE
+                    if task and self.retry_strategy.should_retry(error_type, attempt):
+                        delay = self.retry_strategy.get_delay(error_type, attempt)
+                        if delay > 0:
+                            print(f"  > 响应格式无效，{delay:.1f}秒后重试...", file=sys.stderr)
+                            time.sleep(delay)
+                            continue
+                    return None, "响应格式无效", error_type
+                
+                result_dict = response_object.model_dump()
+                
+                # [新增] 质量验证
+                is_valid, quality_errors = self.quality_validator.validate_result(result_dict, paper_data)
+                if not is_valid:
+                    error_type = ErrorType.INVALID_RESPONSE
+                    error_msg = f"质量验证失败: {'; '.join(quality_errors[:3])}"  # 只显示前3个错误
+                    
+                    if task and self.retry_strategy.should_retry(error_type, attempt):
+                        delay = self.retry_strategy.get_delay(error_type, attempt)
+                        if delay > 0:
+                            print(f"  > {error_msg}，{delay:.1f}秒后重试...", file=sys.stderr)
+                            time.sleep(delay)
+                            continue
+                    
+                    return None, error_msg, error_type
+                
+                # 验证通过，返回结果
+                return result_dict, None, None
                     
             except (google_exceptions.ResourceExhausted, google_exceptions.NotFound) as e:
-                # [核心改进] 区分处理不同类型的API错误
-                if isinstance(e, google_exceptions.NotFound):
-                    error_type = "模型未找到"
-                    print(f"  ! {error_type}: <{self.key_name}> - {model_name}. 将永久禁用此模型。", file=sys.stderr)
-                    self.mark_model_exhausted(model_name) # 永久禁用
-                    return None, f"{error_type}: {model_name}"
-
-                # 对于 ResourceExhausted，我们区分是临时速率限制还是每日配额
-                error_str = str(e).lower()
-                if "per day" in error_str or "daily" in error_str:
-                    error_type = "每日配额耗尽"
-                    print(f"  ! {error_type}: <{self.key_name}> - {model_name}", file=sys.stderr)
-                    self.mark_model_exhausted(model_name) # 永久禁用
-                else:
-                    # 假设是临时速率限制（如每分钟请求数）
-                    error_type = "速率限制"
-                    self.set_model_cooldown(model_name) # 进入临时冷却
+                error_type = self._classify_error(e)
                 
-                return None, f"{error_type}: {model_name}"
+                # [核心改进] 区分处理不同类型的API错误
+                if error_type == ErrorType.MODEL_NOT_FOUND:
+                    print(f"  ! 模型未找到: <{self.key_name}> - {model_name}. 将永久禁用此模型。", file=sys.stderr)
+                    self.mark_model_exhausted(model_name)
+                    return None, f"模型未找到: {model_name}", error_type
+                elif error_type == ErrorType.QUOTA_EXHAUSTED:
+                    print(f"  ! 每日配额耗尽: <{self.key_name}> - {model_name}", file=sys.stderr)
+                    self.mark_model_exhausted(model_name)
+                    return None, f"每日配额耗尽: {model_name}", error_type
+                elif error_type == ErrorType.RATE_LIMITED:
+                    print(f"  ! 速率限制: <{self.key_name}> - {model_name}", file=sys.stderr)
+                    self.set_model_cooldown(model_name)
+                    return None, f"速率限制: {model_name}", error_type
+                
+                return None, f"{error_type.value}: {model_name}", error_type
                 
             except Exception as e:
-                print(f"  > 发生瞬时性错误: {e}", file=sys.stderr)
+                error_type = self._classify_error(e)
+                print(f"  > 发生错误: {e}", file=sys.stderr)
+                
+                if task and self.retry_strategy.should_retry(error_type, attempt):
+                    delay = self.retry_strategy.get_delay(error_type, attempt)
+                    if delay > 0:
+                        print(f"  > 错误类型: {error_type.value}，{delay:.1f}秒后重试...", file=sys.stderr)
+                        time.sleep(delay)
+                        continue
+                
                 if attempt < self.retries - 1:
                     time.sleep(self.timeout)
         
-        return None, f"模型 {model_name} 尝试失败"
+        return None, f"模型 {model_name} 尝试失败", ErrorType.UNKNOWN_ERROR
 
 class ModelScheduler:
     """模型调度器，管理按优先级分层的任务分配"""
@@ -226,7 +427,7 @@ class ModelScheduler:
         """获取当前优先级模型的可用密钥管理器"""
         with self.lock:
             if self.current_model_index >= len(self.model_names):
-                return None, "所有模型优先级已耗尽"
+                return None, None
             
             current_model = self.model_names[self.current_model_index]
             available_managers = [
@@ -242,7 +443,7 @@ class ModelScheduler:
                 self.last_used_manager_indices[current_model] = (current_manager_idx + 1)
                 return manager, current_model
             else:
-                # 当前模型在所有密钥上都耗尽，切换到下一个模型
+                # 当前模型在所有密钥上耗尽，切换到下一个模型
                 print(f"  ! 模型 {current_model} 在所有密钥上配额耗尽，切换到下一优先级", file=sys.stderr)
                 self.current_model_index += 1
                 return self.get_available_manager_for_current_model()
@@ -316,26 +517,45 @@ def result_writer_thread(result_queue: queue.Queue, output_filename: str, total_
 def _handle_task_failure(task: ProcessingTask, result_queue: queue.Queue, error_message: str, log_prefix: str):
     """统一处理任务的最终失败，记录错误并放入结果队列。"""
     print(f"{log_prefix}: {error_message}", file=sys.stderr)
-    task.data['AI'] = {field: error_message for field in Structure.model_fields.keys()}
+    
+    # 创建包含错误信息的AI结果
+    error_result = {field: f"处理失败: {error_message}" for field in Structure.model_fields.keys()}
+    task.data['AI'] = error_result
+    task.data['processing_error'] = error_message  # 添加错误字段用于后续分析
+    task.data['retry_count'] = task.retry_count  # 记录重试次数
+    task.data['retry_history'] = [(err_type.value if hasattr(err_type, 'value') else str(err_type), timestamp) 
+                                  for err_type, timestamp in (task.retry_history or [])]  # 重试历史
+    
     result_queue.put(ProcessingResult(task.idx, task.data, False, error_message))
 
 def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue, 
                  scheduler: ModelScheduler, language: str, thread_id: int):
     """工作线程函数，会检查全局关闭事件"""
     while not shutdown_event.is_set():
+        task = None
         try:
             task = task_queue.get(timeout=1)
         except queue.Empty:
             continue
 
-        if task is None:
-            break  # 结束信号
-
+        # 使用 try-finally 确保总是调用 task_done
         try:
+            if task is None:
+                break  # 结束信号
+
             log_prefix = f"线程{thread_id} (任务 {task.data['id']})"
 
             # 1. 检查是否超过最大重试次数
             max_task_retries = int(os.environ.get("MAX_TASK_RETRIES", 5))
+            
+            # [新增] 智能重试：根据错误类型决定是否继续重试
+            if task.last_error_type and task.retry_count > 0:
+                retry_strategy = SmartRetryStrategy()
+                if not retry_strategy.should_retry(task.last_error_type, task.retry_count):
+                    error_message = f"根据错误类型 {task.last_error_type.value} 的重试策略，任务已达到最大重试次数"
+                    _handle_task_failure(task, result_queue, error_message, log_prefix)
+                    continue
+            
             if task.retry_count >= max_task_retries:
                 error_message = f"任务超过最大重试次数 ({max_task_retries}次)，已放弃"
                 _handle_task_failure(task, result_queue, error_message, log_prefix)
@@ -353,28 +573,42 @@ def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue,
                 continue
 
             # 3. 处理任务
-            result, error = manager.process_paper_with_model(task.data, language, model_name)
+            result, error, error_type = manager.process_paper_with_model(task.data, language, model_name, task)
 
             # 4. 根据结果进行处理
             if result:
                 task.data['AI'] = result
                 result_queue.put(ProcessingResult(task.idx, task.data, True))
                 print(f"{log_prefix}: 成功处理，使用 {model_name}", file=sys.stderr)
-            elif "配额耗尽" in str(error) or "速率限制" in str(error) or "冷却中" in str(error):
-                print(f"{log_prefix}: 处理失败，重新排队 - {error}", file=sys.stderr)
+            elif error_type in [ErrorType.QUOTA_EXHAUSTED, ErrorType.RATE_LIMITED]:
+                print(f"{log_prefix}: 处理失败，重新排队 - {error} (类型: {error_type.value if error_type else 'unknown'})", file=sys.stderr)
                 task.retry_count += 1
+                if error_type:
+                    task.last_error_type = error_type
+                    task.retry_history.append((error_type, time.time()))
+                task_queue.put(task)
+            elif error_type == ErrorType.INVALID_RESPONSE and task.retry_count < 2:
+                # 对于无效响应，给额外的重试机会
+                print(f"{log_prefix}: 响应质量不佳，重新排队 - {error}", file=sys.stderr)
+                task.retry_count += 1
+                if error_type:
+                    task.last_error_type = error_type
+                    task.retry_history.append((error_type, time.time()))
                 task_queue.put(task)
             else:
                 error_message = f"AI分析失败 ({error})"
+                if error_type:
+                    error_message += f" [类型: {error_type.value}]"
                 _handle_task_failure(task, result_queue, error_message, log_prefix)
 
         except Exception as e:
             print(f"线程{thread_id}在处理任务 {task.idx if task else 'N/A'} 时发生意外异常: {e}", file=sys.stderr)
             if task:
                 task.retry_count += 1
-                task_queue.put(task) # 发生未知异常时也重新入队
+                task_queue.put(task)  # 发生未知异常时也重新入队
         finally:
-            task_queue.task_done() # 这是唯一调用task_done的地方
+            if task is not None:  # 只有在成功获取任务时才调用 task_done
+                task_queue.task_done()
 
 def parse_args():
     """解析命令行参数。"""
@@ -403,6 +637,29 @@ def signal_handler(sig, frame):
         print("\nCtrl+C detected! Initiating graceful shutdown...", file=sys.stderr)
         shutdown_event.set()
 
+def validate_configuration(api_keys: List[str], model_names: List[str]) -> bool:
+    """验证配置的有效性"""
+    if not api_keys:
+        print("错误: 未提供API密钥", file=sys.stderr)
+        return False
+    
+    if not model_names:
+        print("错误: 未提供模型名称", file=sys.stderr)
+        return False
+    
+    # 验证API密钥格式
+    for i, key in enumerate(api_keys):
+        if not key.startswith('AIza') or len(key) < 39:
+            print(f"警告: API密钥 {i+1} 格式可能不正确", file=sys.stderr)
+    
+    # 验证模型名称格式
+    valid_prefixes = ['gemini-', 'text-', 'chat-']
+    for model in model_names:
+        if not any(model.startswith(prefix) for prefix in valid_prefixes):
+            print(f"警告: 模型名称 '{model}' 格式可能不正确", file=sys.stderr)
+    
+    return True
+
 def setup_resume_logic(output_filename: str, id_to_idx_map: Dict[str, int]) -> Tuple[set, int, int]:
     """
     处理断点续传逻辑。
@@ -412,12 +669,23 @@ def setup_resume_logic(output_filename: str, id_to_idx_map: Dict[str, int]) -> T
     processed_ids = set()
     initial_next_idx = 0
     initial_processed_count = 0
+    
     if os.path.exists(output_filename):
         print(f"发现已存在的输出文件: {output_filename}。进入续传模式。", file=sys.stderr)
+        
+        # 创建备份文件
+        backup_filename = f"{output_filename}.backup_{int(time.time())}"
+        try:
+            import shutil
+            shutil.copy2(output_filename, backup_filename)
+            print(f"已创建备份文件: {backup_filename}", file=sys.stderr)
+        except Exception as e:
+            print(f"警告: 无法创建备份文件: {e}", file=sys.stderr)
+        
         temp_results = {}
         try:
             with open(output_filename, 'r', encoding='utf-8') as f:
-                for line in f:
+                for line_num, line in enumerate(f, 1):
                     try:
                         processed_data = json.loads(line)
                         paper_id = processed_data.get('id')
@@ -425,9 +693,10 @@ def setup_resume_logic(output_filename: str, id_to_idx_map: Dict[str, int]) -> T
                             original_idx = id_to_idx_map[paper_id]
                             temp_results[original_idx] = processed_data
                             processed_ids.add(paper_id)
-                    except (json.JSONDecodeError, KeyError):
-                        print(f"警告: 在 {output_filename} 中发现无效的JSON行，已跳过。", file=sys.stderr)
+                    except (json.JSONDecodeError, KeyError) as e:
+                        print(f"警告: 在 {output_filename} 第 {line_num} 行发现无效的JSON，已跳过: {e}", file=sys.stderr)
             
+            # 找到连续的处理结果
             while initial_next_idx in temp_results:
                 initial_next_idx += 1
             
@@ -437,8 +706,22 @@ def setup_resume_logic(output_filename: str, id_to_idx_map: Dict[str, int]) -> T
                 with open(output_filename, 'w', encoding='utf-8') as f:
                     f.writelines(contiguous_lines)
                 processed_ids = {temp_results[i]['id'] for i in range(initial_next_idx)}
+                
         except Exception as e:
-            print(f"错误: 读取已存在的输出文件时发生错误: {e}。将作为新任务运行。", file=sys.stderr)
+            print(f"错误: 读取已存在的输出文件时发生错误: {e}。将重命名损坏文件并作为新任务运行。", file=sys.stderr)
+            # 重命名损坏的文件而不是直接覆盖
+            corrupted_filename = f"{output_filename}.corrupted_{int(time.time())}"
+            try:
+                os.rename(output_filename, corrupted_filename)
+                print(f"已将损坏的文件重命名为: {corrupted_filename}", file=sys.stderr)
+            except Exception as rename_error:
+                print(f"警告: 无法重命名损坏文件: {rename_error}", file=sys.stderr)
+            
+            # 重置所有变量
+            processed_ids = set()
+            initial_next_idx = 0
+            initial_processed_count = 0
+    
     return processed_ids, initial_next_idx, len(processed_ids)
 
 def main():
@@ -462,6 +745,11 @@ def main():
         print("错误: GOOGLE_API_KEYS 或 MODEL_PRIORITY_LIST 环境变量不能为空。", file=sys.stderr)
         sys.exit(1)
 
+    # 验证配置
+    if not validate_configuration(api_keys, model_names):
+        print("错误: 配置验证失败，请检查API密钥和模型名称的设置。", file=sys.stderr)
+        sys.exit(1)
+
     # 可以使用比密钥数量更多的工作线程，因为现在是基于任务的调度
     max_workers = min(args.max_workers, len(api_keys) * 2)  # 最多是密钥数量的2倍
     
@@ -470,6 +758,9 @@ def main():
     print(f"模型优先级: {model_names}", file=sys.stderr)
     print(f"工作线程数: {max_workers}", file=sys.stderr)
     print(f"速率限制 (每个密钥): {60/api_call_interval:.1f} RPM (每分钟请求数)", file=sys.stderr)
+    print(f"最大任务重试次数: {os.environ.get('MAX_TASK_RETRIES', 5)}", file=sys.stderr)
+    print(f"智能重试策略: 已启用 (根据错误类型动态调整)", file=sys.stderr)
+    print(f"结果质量验证: 已启用", file=sys.stderr)
     print("-----------------------------", file=sys.stderr)
 
     language = os.environ.get("LANGUAGE", 'Chinese')
@@ -482,9 +773,17 @@ def main():
         print(f"错误: 处理文件 {args.data} 时出错: {e}", file=sys.stderr)
         return
     
+    # 去重处理，减少内存使用
     seen_ids = set()
-    unique_data = [item for item in data if item.get('id') not in seen_ids and not seen_ids.add(item['id'])]
+    unique_data = []
+    for item in data:
+        item_id = item.get('id')
+        if item_id and item_id not in seen_ids:
+            seen_ids.add(item_id)
+            unique_data.append(item)
+    
     data = unique_data
+    del unique_data  # 立即释放内存
     print(f"从 {args.data} 加载了 {len(data)} 篇不重复的论文", file=sys.stderr)
 
     # 创建提示模板
@@ -555,6 +854,8 @@ def main():
 
     # 定期显示调度状态
     def status_monitor():
+        retry_stats = defaultdict(int)  # 统计各种重试类型的次数
+        
         while not task_queue.empty():
             time.sleep(30)  # 每30秒显示一次状态
             info = scheduler.get_current_model_info()
@@ -565,6 +866,11 @@ def main():
                     print(f"  {model}: 可用 {avail_info['available']}/{avail_info['total']}, "
                           f"耗尽 {avail_info['exhausted']}", file=sys.stderr)
                 print("剩余任务:", task_queue.qsize(), file=sys.stderr)
+                
+                # 显示重试统计（如果有的话）
+                if retry_stats:
+                    print("重试统计:", dict(retry_stats), file=sys.stderr)
+                print("---", file=sys.stderr)
 
     # 启动状态监控线程
     monitor_thread = threading.Thread(target=status_monitor)
@@ -580,24 +886,38 @@ def main():
     # 等待所有任务完成，或直到收到关闭信号
     try:
         while not task_queue.empty() and not shutdown_event.is_set():
-            time.sleep(1) # 允许主线程响应信号
+            time.sleep(1)  # 允许主线程响应信号
 
         if not shutdown_event.is_set():
             print("所有任务已进入队列，等待处理完成...", file=sys.stderr)
-            task_queue.join() # 正常完成
+            task_queue.join()  # 正常完成
         else:
             print("关闭信号已接收，等待工作线程完成当前任务...", file=sys.stderr)
 
     except (KeyboardInterrupt, SystemExit):
+        print("收到中断信号，开始优雅关闭...", file=sys.stderr)
         shutdown_event.set()
-
-    # 发送结束信号给所有线程
-    for _ in threads:
-        task_queue.put(None)
-    for thread in threads:
-        thread.join()
-    result_queue.join() # 等待结果队列被完全处理
-    writer_thread.join() # 等待写入线程完成
+    finally:
+        # 确保所有资源都被正确清理
+        print("开始清理资源...", file=sys.stderr)
+        
+        # 发送结束信号给所有线程
+        for _ in threads:
+            task_queue.put(None)
+        
+        # 等待所有工作线程完成
+        for thread in threads:
+            thread.join(timeout=10)  # 最多等待10秒
+            if thread.is_alive():
+                print(f"警告: 工作线程超时，可能存在资源泄漏", file=sys.stderr)
+        
+        # 等待结果队列被完全处理
+        result_queue.join()
+        
+        # 等待写入线程完成
+        writer_thread.join(timeout=10)
+        if writer_thread.is_alive():
+            print(f"警告: 写入线程超时，可能存在资源泄漏", file=sys.stderr)
 
     # 记录处理结束时间
     end_time = time.time()
