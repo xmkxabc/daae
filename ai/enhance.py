@@ -39,8 +39,8 @@ AI_CALL_FAILED_MARKER = "AI_CALL_FAILED"
 MAX_TOTAL_ATTEMPTS_PER_PAPER = 50  # 每篇论文的最大总尝试次数
 MAX_PROCESSING_TIME_PER_PAPER = 1800  # 每篇论文的最大处理时间（30分钟）
 # 针对非永久性失败的指数退避冷却时间（例如，TooManyRequests）
-TEMPORARY_FAILURE_BASE_COOLDOWN = 5 # 临时失败基础冷却时间（秒）
-TEMPORARY_FAILURE_MAX_COOLDOWN = 300 # 临时失败最大冷却时间（秒，5分钟）
+TEMPORARY_FAILURE_BASE_COOLDOWN = 2 # 临时失败基础冷却时间（秒，从5秒减少到2秒）
+TEMPORARY_FAILURE_MAX_COOLDOWN = 120 # 临时失败最大冷却时间（秒，从5分钟减少到2分钟）
 
 
 @dataclass
@@ -133,7 +133,7 @@ class ConfigValidator:
 class RateLimiter:
     """智能频率限制器"""
     
-    def __init__(self, min_interval: float = 6.0):
+    def __init__(self, min_interval: float = 3.0):  # 减少默认间隔从6秒到3秒
         self.min_interval = min_interval
         self.last_call_times = defaultdict(float)
         self.lock = threading.Lock()
@@ -235,12 +235,12 @@ def parse_args():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("--data", type=str, required=True, help="要处理的JSONL数据文件")
-    parser.add_argument("--retries", type=int, default=3, help="对每个模型任务的最大重试次数")
-    parser.add_argument("--timeout", type=int, default=2, help="失败尝试之间的等待秒数")
+    parser.add_argument("--retries", type=int, default=2, help="对每个模型任务的最大重试次数")  # 减少重试次数
+    parser.add_argument("--timeout", type=int, default=1, help="失败尝试之间的等待秒数")  # 减少超时时间
     cpu_count = os.cpu_count() or 4
-    parser.add_argument("--max-workers", type=int, default=min(8, cpu_count * 2),
+    parser.add_argument("--max-workers", type=int, default=min(16, cpu_count * 4),
                         help="最大并发工作线程数")
-    parser.add_argument("--batch-size", type=int, default=10, help="批处理大小")
+    parser.add_argument("--batch-size", type=int, default=20, help="批处理大小")
     parser.add_argument("--output", type=str, help="输出文件名（已禁用，程序不保存文件）。")
     parser.add_argument("--resume", action="store_true", help="恢复处理（已禁用，因为不保存文件）。")
     parser.add_argument("--log-level", choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'], 
@@ -305,7 +305,7 @@ def process_single_paper(
                     break # 跳出循环，标记为失败
                 else:
                     logger.debug(f"论文 {paper_id}: 没有可用任务，等待冷却中的任务恢复。")
-                    time.sleep(10)  # 等待一段时间，让一些任务从冷却中恢复
+                    time.sleep(5)  # 减少等待时间从10秒到5秒
                     continue # 继续尝试获取任务
             
             # 尝试使用当前任务进行处理
@@ -352,7 +352,7 @@ def process_single_paper(
                     logger.warning(f"论文 {paper_id}: 请求过于频繁 (TooManyRequests) - {task.key_name}-{task.model_name}。")
                     task_manager.mark_task_failed(task, permanent=False) # 标记为临时失败，进行冷却
                     final_result = None # 确保结果为None
-                    time.sleep(timeout * 2)  # 更长的等待时间
+                    time.sleep(timeout)  # 减少等待时间，不再乘以2
                     break # 跳出当前任务的重试循环，让任务进入冷却
                     
                 except langchain_core.exceptions.OutputParserException as e:
@@ -537,8 +537,8 @@ def initialize_model_chains(
             llm = ChatGoogleGenerativeAI(
                 model=task.model_name, 
                 google_api_key=task.api_key,
-                temperature=0.1,  # 降低随机性
-                max_output_tokens=2048,  # 限制输出长度
+                temperature=0.0,  # 进一步降低随机性以提高一致性和速度
+                max_output_tokens=8192,  # 减少输出长度限制以提高速度
                 response_model_strict=True # 开启严格模式，更早捕获Pydantic验证错误
             )
             # with_structured_output 默认会使用Pydantic进行解析和验证
@@ -605,7 +605,7 @@ def main():
         
         # 初始化组件
         task_manager = TaskManager(task_configs)
-        rate_limiter = RateLimiter(float(os.environ.get("API_CALL_INTERVAL", 6)))
+        rate_limiter = RateLimiter(float(os.environ.get("API_CALL_INTERVAL", 3)))  # 默认间隔改为3秒
         stats = ProcessingStats()
         language = os.environ.get("LANGUAGE", 'Chinese')
         
@@ -678,7 +678,7 @@ def main():
         logger.info(f"本次失败数量: {final_stats['failure']}")
         
         # 成功率应基于本次处理的论文
-        if final_stats['processed_count'] > 0:
+        if final_stats['processed'] > 0:
             logger.info(f"本次处理成功率: {final_stats['success_rate']:.1f}%")
         else:
             logger.info("本次没有论文被处理。")
