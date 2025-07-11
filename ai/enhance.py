@@ -37,6 +37,64 @@ except FileNotFoundError as e:
 # 全局关闭事件
 shutdown_event = threading.Event()
 
+# 全局重试统计
+retry_statistics = {
+    'total_retries': 0,
+    'by_error_type': defaultdict(int),
+    'successful_retries': 0,
+    'failed_after_retry': 0
+}
+retry_stats_lock = threading.Lock()
+
+# 质量验证统计
+quality_statistics = {
+    'total_validations': 0,
+    'passed_validations': 0,
+    'failed_validations': 0,
+    'validation_errors': defaultdict(int)
+}
+quality_stats_lock = threading.Lock()
+
+def update_quality_stats(passed: bool, errors: Optional[List[str]] = None):
+    """更新质量验证统计"""
+    with quality_stats_lock:
+        quality_statistics['total_validations'] += 1
+        if passed:
+            quality_statistics['passed_validations'] += 1
+        else:
+            quality_statistics['failed_validations'] += 1
+            if errors:
+                for error in errors[:3]:  # 只记录前3个错误
+                    quality_statistics['validation_errors'][error] += 1
+
+def get_quality_stats() -> Dict:
+    """获取质量验证统计信息"""
+    with quality_stats_lock:
+        return {
+            'total_validations': quality_statistics['total_validations'],
+            'passed_validations': quality_statistics['passed_validations'],
+            'failed_validations': quality_statistics['failed_validations'],
+            'validation_errors': dict(quality_statistics['validation_errors'])
+        }
+
+def update_retry_stats(error_type: 'ErrorType', success: bool = False):
+    """更新全局重试统计"""
+    with retry_stats_lock:
+        retry_statistics['total_retries'] += 1
+        retry_statistics['by_error_type'][error_type.value] += 1
+        if success:
+            retry_statistics['successful_retries'] += 1
+
+def get_retry_stats() -> Dict:
+    """获取重试统计信息"""
+    with retry_stats_lock:
+        return {
+            'total_retries': retry_statistics['total_retries'],
+            'by_error_type': dict(retry_statistics['by_error_type']),
+            'successful_retries': retry_statistics['successful_retries'],
+            'failed_after_retry': retry_statistics['failed_after_retry']
+        }
+
 class SlidingWindowRateLimiter:
     """
     一个线程安全的速率限制器，使用滑动窗口算法。
@@ -140,12 +198,12 @@ class SmartRetryStrategy:
 class ResultQualityValidator:
     def __init__(self):
         self.min_length_thresholds = {
-            'chinese_title': 5,
-            'chinese_summary': 50,
-            'significance': 20,
-            'innovation': 20,
-            'methodology': 30,
-            'implications': 30,
+            'chinese_title': 3,      # 降低到3个字符，更合理
+            'chinese_summary': 30,   # 降低到30个字符
+            'significance': 15,      # 降低到15个字符
+            'innovation': 15,        # 降低到15个字符
+            'methodology': 20,       # 降低到20个字符
+            'implications': 20,      # 降低到20个字符
         }
         
     def validate_result(self, result: Dict, original_data: Dict) -> Tuple[bool, List[str]]:
@@ -349,6 +407,8 @@ class APIKeyManager:
                 
                 # [新增] 质量验证
                 is_valid, quality_errors = self.quality_validator.validate_result(result_dict, paper_data)
+                update_quality_stats(is_valid, quality_errors)  # 更新质量统计
+                
                 if not is_valid:
                     error_type = ErrorType.INVALID_RESPONSE
                     error_msg = f"质量验证失败: {'; '.join(quality_errors[:3])}"  # 只显示前3个错误
@@ -426,27 +486,32 @@ class ModelScheduler:
     def get_available_manager_for_current_model(self) -> Tuple[Optional[APIKeyManager], Optional[str]]:
         """获取当前优先级模型的可用密钥管理器"""
         with self.lock:
-            if self.current_model_index >= len(self.model_names):
-                return None, None
+            # 防止无限递归：检查是否所有模型都已耗尽
+            max_attempts = len(self.model_names)
+            attempts = 0
             
-            current_model = self.model_names[self.current_model_index]
-            available_managers = [
-                manager for manager in self.model_key_managers[current_model]
-                if manager.is_model_available(current_model)
-            ]
+            while attempts < max_attempts and self.current_model_index < len(self.model_names):
+                current_model = self.model_names[self.current_model_index]
+                available_managers = [
+                    manager for manager in self.model_key_managers[current_model]
+                    if manager.is_model_available(current_model)
+                ]
+                
+                if available_managers:
+                    # [改进] 使用轮询（Round-Robin）在可用密钥之间进行负载均衡
+                    num_available = len(available_managers)
+                    current_manager_idx = self.last_used_manager_indices[current_model]
+                    manager = available_managers[current_manager_idx % num_available]
+                    self.last_used_manager_indices[current_model] = (current_manager_idx + 1)
+                    return manager, current_model
+                else:
+                    # 当前模型在所有密钥上耗尽，切换到下一个模型
+                    print(f"  ! 模型 {current_model} 在所有密钥上配额耗尽，切换到下一优先级", file=sys.stderr)
+                    self.current_model_index += 1
+                    attempts += 1
             
-            if available_managers:
-                # [改进] 使用轮询（Round-Robin）在可用密钥之间进行负载均衡
-                num_available = len(available_managers)
-                current_manager_idx = self.last_used_manager_indices[current_model]
-                manager = available_managers[current_manager_idx % num_available]
-                self.last_used_manager_indices[current_model] = (current_manager_idx + 1)
-                return manager, current_model
-            else:
-                # 当前模型在所有密钥上耗尽，切换到下一个模型
-                print(f"  ! 模型 {current_model} 在所有密钥上配额耗尽，切换到下一优先级", file=sys.stderr)
-                self.current_model_index += 1
-                return self.get_available_manager_for_current_model()
+            # 所有模型都已耗尽
+            return None, None
     
     def get_current_model_info(self) -> Dict:
         """获取当前模型使用情况"""
@@ -568,6 +633,13 @@ def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue,
             if not manager or not model_name:
                 print(f"{log_prefix}: 暂时无可用模型，任务将重新排队", file=sys.stderr)
                 task.retry_count += 1
+                
+                # 防止无限重新排队：如果所有模型都耗尽，直接失败
+                if task.retry_count >= max_task_retries:
+                    error_message = "所有模型配额已耗尽，无法继续处理"
+                    _handle_task_failure(task, result_queue, error_message, log_prefix)
+                    continue
+                
                 task_queue.put(task)
                 time.sleep(5)
                 continue
@@ -580,12 +652,17 @@ def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue,
                 task.data['AI'] = result
                 result_queue.put(ProcessingResult(task.idx, task.data, True))
                 print(f"{log_prefix}: 成功处理，使用 {model_name}", file=sys.stderr)
+                
+                # 如果这是重试后的成功，更新统计
+                if task.retry_count > 0 and task.last_error_type:
+                    update_retry_stats(task.last_error_type, success=True)
             elif error_type in [ErrorType.QUOTA_EXHAUSTED, ErrorType.RATE_LIMITED]:
                 print(f"{log_prefix}: 处理失败，重新排队 - {error} (类型: {error_type.value if error_type else 'unknown'})", file=sys.stderr)
                 task.retry_count += 1
                 if error_type:
                     task.last_error_type = error_type
                     task.retry_history.append((error_type, time.time()))
+                    update_retry_stats(error_type)  # 更新统计
                 task_queue.put(task)
             elif error_type == ErrorType.INVALID_RESPONSE and task.retry_count < 2:
                 # 对于无效响应，给额外的重试机会
@@ -594,6 +671,7 @@ def worker_thread(task_queue: queue.Queue, result_queue: queue.Queue,
                 if error_type:
                     task.last_error_type = error_type
                     task.retry_history.append((error_type, time.time()))
+                    update_retry_stats(error_type)  # 更新统计
                 task_queue.put(task)
             else:
                 error_message = f"AI分析失败 ({error})"
@@ -635,7 +713,16 @@ def signal_handler(sig, frame):
     """处理 Ctrl+C 信号"""
     if not shutdown_event.is_set():
         print("\nCtrl+C detected! Initiating graceful shutdown...", file=sys.stderr)
+        debug_thread_status()  # 显示线程状态
         shutdown_event.set()
+
+def debug_thread_status():
+    """调试线程状态"""
+    import threading
+    print("\n=== 线程状态调试信息 ===", file=sys.stderr)
+    for thread in threading.enumerate():
+        print(f"线程: {thread.name}, 活跃: {thread.is_alive()}, 守护进程: {thread.daemon}", file=sys.stderr)
+    print("=========================\n", file=sys.stderr)
 
 def validate_configuration(api_keys: List[str], model_names: List[str]) -> bool:
     """验证配置的有效性"""
@@ -854,10 +941,27 @@ def main():
 
     # 定期显示调度状态
     def status_monitor():
-        retry_stats = defaultdict(int)  # 统计各种重试类型的次数
+        last_queue_size = -1
+        stalled_count = 0
         
-        while not task_queue.empty():
+        while not task_queue.empty() and not shutdown_event.is_set():
             time.sleep(30)  # 每30秒显示一次状态
+            
+            current_queue_size = task_queue.qsize()
+            
+            # 检测是否停滞
+            if current_queue_size == last_queue_size and current_queue_size > 0:
+                stalled_count += 1
+                if stalled_count >= 3:  # 连续3次队列大小不变，可能停滞
+                    print(f"警告: 队列可能停滞，连续 {stalled_count * 30} 秒无变化", file=sys.stderr)
+                    if stalled_count >= 6:  # 3分钟无变化，强制退出监控
+                        print("状态监控检测到可能的死锁，退出监控线程", file=sys.stderr)
+                        break
+            else:
+                stalled_count = 0
+            
+            last_queue_size = current_queue_size
+            
             info = scheduler.get_current_model_info()
             if info["current_model_index"] < len(model_names):
                 current_model = model_names[info["current_model_index"]]
@@ -865,12 +969,32 @@ def main():
                 for model, avail_info in info["model_availability"].items():
                     print(f"  {model}: 可用 {avail_info['available']}/{avail_info['total']}, "
                           f"耗尽 {avail_info['exhausted']}", file=sys.stderr)
-                print("剩余任务:", task_queue.qsize(), file=sys.stderr)
+                print("剩余任务:", current_queue_size, file=sys.stderr)
                 
-                # 显示重试统计（如果有的话）
-                if retry_stats:
-                    print("重试统计:", dict(retry_stats), file=sys.stderr)
+                # 显示重试统计
+                retry_stats = get_retry_stats()
+                if retry_stats['total_retries'] > 0:
+                    print(f"重试统计: 总计 {retry_stats['total_retries']} 次", file=sys.stderr)
+                    print(f"  成功重试: {retry_stats['successful_retries']} 次", file=sys.stderr)
+                    if retry_stats['by_error_type']:
+                        print("  按错误类型:", file=sys.stderr)
+                        for error_type, count in retry_stats['by_error_type'].items():
+                            print(f"    {error_type}: {count} 次", file=sys.stderr)
+                # 显示质量验证统计
+                quality_stats = get_quality_stats()
+                if quality_stats['total_validations'] > 0:
+                    pass_rate = (quality_stats['passed_validations'] / quality_stats['total_validations']) * 100
+                    print(f"质量验证: {quality_stats['total_validations']} 次验证, 通过率 {pass_rate:.1f}%", file=sys.stderr)
+                    if quality_stats['failed_validations'] > 0:
+                        print(f"  失败: {quality_stats['failed_validations']} 次", file=sys.stderr)
+                        for error, count in quality_stats['validation_errors'].items():
+                            print(f"    {error}: {count} 次", file=sys.stderr)
                 print("---", file=sys.stderr)
+            else:
+                print("所有模型已耗尽，状态监控退出", file=sys.stderr)
+                break
+        
+        print("状态监控线程正常退出", file=sys.stderr)
 
     # 启动状态监控线程
     monitor_thread = threading.Thread(target=status_monitor)
@@ -885,8 +1009,25 @@ def main():
 
     # 等待所有任务完成，或直到收到关闭信号
     try:
+        last_queue_size = task_queue.qsize()
+        stalled_cycles = 0
+        
         while not task_queue.empty() and not shutdown_event.is_set():
             time.sleep(1)  # 允许主线程响应信号
+            
+            # 每10秒检查一次是否停滞
+            if time.time() % 10 < 1:
+                current_queue_size = task_queue.qsize()
+                if current_queue_size == last_queue_size and current_queue_size > 0:
+                    stalled_cycles += 1
+                    if stalled_cycles >= 18:  # 3分钟无变化
+                        print(f"检测到可能的死锁: 队列大小3分钟无变化 ({current_queue_size}个任务)", file=sys.stderr)
+                        print("强制设置关闭事件...", file=sys.stderr)
+                        shutdown_event.set()
+                        break
+                else:
+                    stalled_cycles = 0
+                last_queue_size = current_queue_size
 
         if not shutdown_event.is_set():
             print("所有任务已进入队列，等待处理完成...", file=sys.stderr)
@@ -932,6 +1073,23 @@ def main():
         print(f"  最终使用模型: {model_names[final_info['current_model_index']]}", file=sys.stderr)
     else:
         print(f"  所有模型优先级已使用完毕", file=sys.stderr)
+    
+    # 显示重试和质量统计
+    final_retry_stats = get_retry_stats()
+    final_quality_stats = get_quality_stats()
+    
+    if final_retry_stats['total_retries'] > 0:
+        print(f"\n--- 重试统计总结 ---", file=sys.stderr)
+        print(f"总重试次数: {final_retry_stats['total_retries']}", file=sys.stderr)
+        print(f"成功重试: {final_retry_stats['successful_retries']}", file=sys.stderr)
+        success_rate = (final_retry_stats['successful_retries'] / final_retry_stats['total_retries']) * 100
+        print(f"重试成功率: {success_rate:.1f}%", file=sys.stderr)
+    
+    if final_quality_stats['total_validations'] > 0:
+        print(f"\n--- 质量验证总结 ---", file=sys.stderr)
+        print(f"总验证次数: {final_quality_stats['total_validations']}", file=sys.stderr)
+        pass_rate = (final_quality_stats['passed_validations'] / final_quality_stats['total_validations']) * 100
+        print(f"验证通过率: {pass_rate:.1f}%", file=sys.stderr)
     
     # 显示性能统计
     actual_elapsed_time = end_time - start_time
