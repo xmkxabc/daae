@@ -34,6 +34,9 @@ def parse_args():
     parser.add_argument("--data", type=str, required=True, help="要处理的JSONL数据文件。")
     parser.add_argument("--retries", type=int, default=3, help="对每个模型任务的最大重试次数。")
     parser.add_argument("--timeout", type=int, default=1, help="失败尝试之间的等待秒数。")
+    parser.add_argument("--concurrent", action="store_true", help="启用并发处理模式。")
+    parser.add_argument("--max-workers", type=int, default=None, help="并发模式下的最大worker数量。")
+    parser.add_argument("--rpm-limit", type=int, default=6, help="每个API密钥的每分钟请求数限制。")
     return parser.parse_args()
 
 def is_response_valid(result: Structure):
@@ -51,6 +54,14 @@ def is_response_valid(result: Structure):
 def main():
     """主函数，运行增强过程。"""
     args = parse_args()
+    
+    # 如果启用并发模式，使用并发处理器
+    if args.concurrent:
+        try:
+            from enhance_concurrent import PaperProcessor, WorkerConfig
+            return main_concurrent(args)
+        except ImportError as e:
+            print(f"警告: 无法导入并发处理模块，回退到串行模式: {e}", file=sys.stderr)
     
     # --- [核心改造] 加载统一的密钥和模型优先级列表 ---
     google_api_keys_str = os.environ.get("GOOGLE_API_KEYS")
@@ -202,6 +213,96 @@ def main():
             f.write(json.dumps(d_item, ensure_ascii=False) + "\n")
 
     print(f"\n处理完成。成功处理: {len(enhanced_data) - total_failures}/{len(enhanced_data)}。输出文件: {output_filename}")
+
+
+def main_concurrent(args):
+    """并发模式的主函数"""
+    from enhance_concurrent import PaperProcessor, WorkerConfig
+    
+    # 加载配置
+    google_api_keys_str = os.environ.get("GOOGLE_API_KEYS")
+    model_priority_list_str = os.environ.get("MODEL_PRIORITY_LIST")
+    
+    if not google_api_keys_str or not model_priority_list_str:
+        print("错误: 请在 .env 文件中设置 GOOGLE_API_KEYS 和 MODEL_PRIORITY_LIST 环境变量。", file=sys.stderr)
+        sys.exit(1)
+
+    api_keys = [key.strip() for key in google_api_keys_str.split(',') if key.strip()]
+    model_names = [name.strip() for name in model_priority_list_str.split(',') if name.strip()]
+
+    if not api_keys or not model_names:
+        print("错误: GOOGLE_API_KEYS 或 MODEL_PRIORITY_LIST 环境变量不能为空。", file=sys.stderr)
+        sys.exit(1)
+        
+    language = os.environ.get("LANGUAGE", 'Chinese')
+
+    # 读取和预处理数据
+    try:
+        with open(args.data, "r", encoding="utf-8") as f:
+            data = [json.loads(line) for line in f if line.strip()]
+    except Exception as e:
+        print(f"错误: 处理文件 {args.data} 时出错: {e}", file=sys.stderr)
+        return
+    
+    seen_ids = set()
+    unique_data = [item for item in data if item.get('id') not in seen_ids and not seen_ids.add(item['id'])]
+    data = unique_data
+    print(f"从 {args.data} 加载了 {len(data)} 篇不重复的论文", file=sys.stderr)
+
+    # 创建worker配置
+    worker_configs = []
+    for i, api_key in enumerate(api_keys):
+        config = WorkerConfig(
+            worker_id=i,
+            key_name=f"密钥_{i+1}",
+            api_key=api_key,
+            model_name=model_names[0],  # 使用优先级最高的模型
+            rpm_limit=args.rpm_limit
+        )
+        worker_configs.append(config)
+    
+    print(f"\n=== 并发处理模式 ===", file=sys.stderr)
+    print(f"API密钥数量: {len(api_keys)}", file=sys.stderr)
+    print(f"主要模型: {model_names[0]}", file=sys.stderr)
+    print(f"RPM限制: {args.rpm_limit} 请求/分钟/密钥", file=sys.stderr)
+    print(f"理论最大处理速度: {len(api_keys) * args.rpm_limit} 篇/分钟", file=sys.stderr)
+    print("===================", file=sys.stderr)
+
+    prompt_template = ChatPromptTemplate.from_messages([
+        ("system", system_prompt_template),
+        ("human", template_content)
+    ])
+
+    # 创建并发处理器
+    processor = PaperProcessor(
+        worker_configs=worker_configs,
+        prompt_template=prompt_template,
+        retries=args.retries,
+        timeout=args.timeout,
+        language=language
+    )
+
+    # 处理论文
+    enhanced_data = processor.process_papers_concurrent(data, args.max_workers)
+
+    # 输出结果
+    output_filename = args.data.replace('.jsonl', f'_AI_enhanced_{language}.jsonl')
+    with open(output_filename, "w", encoding="utf-8") as f:
+        for d_item in enhanced_data:
+            f.write(json.dumps(d_item, ensure_ascii=False) + "\n")
+
+    # 最终统计
+    total_time = time.time() - processor.stats.start_time
+    final_rate = len(enhanced_data) / (total_time / 60) if total_time > 0 else 0
+    
+    print(f"\n=== 并发处理完成 ===", file=sys.stderr)
+    print(f"总论文数: {len(enhanced_data)}", file=sys.stderr)
+    print(f"成功处理: {processor.stats.successful_papers}", file=sys.stderr)
+    print(f"处理失败: {processor.stats.failed_papers}", file=sys.stderr)
+    print(f"总耗时: {total_time:.1f} 秒", file=sys.stderr)
+    print(f"平均处理速度: {final_rate:.1f} 篇/分钟", file=sys.stderr)
+    print(f"输出文件: {output_filename}", file=sys.stderr)
+    print("======================", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

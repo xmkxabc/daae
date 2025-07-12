@@ -32,10 +32,14 @@ jobs:
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SECONDARY_GOOGLE_API_KEY: ${{ secrets.SECONDARY_GOOGLE_API_KEY }}
+          GOOGLE_API_KEYS: ${{ secrets.GOOGLE_API_KEYS }}
+          MODEL_PRIORITY_LIST: ${{ secrets.MODEL_PRIORITY_LIST }}
           LANGUAGE: ${{ vars.LANGUAGE }}
           CATEGORIES: ${{ vars.CATEGORIES }}
           MODEL_NAME: ${{ vars.MODEL_NAME }}
           FALLBACK_MODELS: ${{ vars.FALLBACK_MODELS }}
+          CONCURRENT_MODE: ${{ vars.CONCURRENT_MODE }}
+          RPM_LIMIT: ${{ vars.RPM_LIMIT }}
         run: |
           source .venv/bin/activate
           
