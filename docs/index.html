@@ -5005,7 +5005,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             paper.categories.slice(0, 2).map(cat => `<span class="keyword-tag inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded">${cat}</span>`).join('') : '';
         
         let updatedInfoHTML = '';
-        if (paper.updated && paper.date && paper.updated.split('T')[0] !== paper.date.split('T')[0]) {
+        if (paper.updated) {
             updatedInfoHTML = ` | <span class="text-green-600 text-xs font-semibold">Updated: ${paper.updated.split('T')[0]}</span>`;
         }
         
@@ -5053,7 +5053,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         };
 
         let updatedInfoHTML = '';
-        if (paper.updated && paper.date && paper.updated.split('T')[0] !== paper.date.split('T')[0]) {
+        if (paper.updated) {
             updatedInfoHTML = ` | <span class="text-green-600 font-semibold">Updated: ${paper.updated.split('T')[0]}</span>`;
         }
 
