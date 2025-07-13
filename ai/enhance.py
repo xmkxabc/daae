@@ -1,170 +1,169 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-异步并发版：多密钥、每 Key 10 RPM
+Async arXiv enhancer —— 多 API-Key × 多模型；自动按官方免费额度限流
 """
 
-import os, sys, json, time, argparse, asyncio
-from typing import Dict, Tuple, List, Optional
+import os, sys, json, time, argparse, asyncio, re
+from typing import Dict, Tuple, Optional
 
 import dotenv
-from google.api_core import exceptions as google_exceptions
+from google.api_core import exceptions as gexc
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
 
-from structure import Structure   # 你的 Pydantic 输出结构
+from structure import Structure
 
-# ──────────────────────────────────────────────
-# 1. CLI & 环境变量
-# ──────────────────────────────────────────────
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Async arXiv AI enhancer")
-    p.add_argument("--data", required=True, help="输入 JSONL")
-    p.add_argument("--retries", type=int, default=3, help="瞬时错误重试次数")
-    p.add_argument("--language", default="Chinese", help="输出语言")
+# ───────────────────────── 免费额度表 ──────────────────────────
+# 来源：Gemini API docs › Rate limits › Free tier table.
+FREE_LIMITS: Dict[str, Dict[str, int]] = {
+    # model-prefix        rpm   rpd
+    "gemini-2.5-pro":    {"rpm": 5,  "rpd": 100},
+    "gemini-2.5-flash":  {"rpm": 10, "rpd": 250},
+    "gemini-2.5-flash-l":{"rpm": 15, "rpd": 1000},  # 2.5 Flash-Lite Preview
+    "gemini-2.0-flash":  {"rpm": 15, "rpd": 200},
+    "gemini-2.0-flash-l":{"rpm": 30, "rpd": 200},   # 2.0 Flash-Lite
+    "gemini-1.5-flash":  {"rpm": 15, "rpd": 50},    # deprecated
+    "gemini-1.5-pro":    {"rpm": 2,  "rpd": 50},    # deprecated
+}
+
+def limit_of(model: str):
+    """返回 (rpm, rpd)；未知模型默认 (10, 250)"""
+    for prefix, lim in FREE_LIMITS.items():
+        if model.startswith(prefix):
+            return lim["rpm"], lim["rpd"]
+    return 10, 250
+
+# ───────────────────────── CLI & 环境 ─────────────────────────
+def parse_args():
+    p = argparse.ArgumentParser(description="Enhance arXiv JSONL with Gemini")
+    p.add_argument("--data", required=True, help="输入 JSONL 文件")
+    p.add_argument("--language", default="Chinese")
+    p.add_argument("--retries", type=int, default=3)
     return p.parse_args()
 
 dotenv.load_dotenv(override=False)
 API_KEYS = [k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()]
-MODEL_LIST = [m.strip() for m in os.getenv("MODEL_PRIORITY_LIST", "").split(",") if m.strip()]
-if not API_KEYS or not MODEL_LIST:
-    sys.exit("❌ 需要环境变量 GOOGLE_API_KEYS 和 MODEL_PRIORITY_LIST")
+MODELS   = [m.strip() for m in os.getenv("MODEL_PRIORITY_LIST", "").split(",") if m.strip()]
+if not API_KEYS or not MODELS:
+    sys.exit("❌ 请配置 GOOGLE_API_KEYS、MODEL_PRIORITY_LIST")
 
-# RPM_PER_KEY = 10                # 免费 10 请求/分
-PER_CALL_INTERVAL = int(os.environ.get("API_CALL_INTERVAL", 6))    # 6 s
-RPM_PER_KEY = 60 // PER_CALL_INTERVAL  # 每 Key 的速率限制 (每分钟请求数)
-
-# ──────────────────────────────────────────────
-# 2. 速率限制器：每 Key 独立
-# ──────────────────────────────────────────────
-class KeyLimiter:
-    def __init__(self, rpm: int):
-        self._interval = 60 / rpm
-        self._next_time = 0.0
-        self._lock = asyncio.Lock()
+# ───────────────────────── 限流器 ─────────────────────────────
+class ComboLimiter:
+    """单 Key+Model 粒度：RPM + 今日 RPD"""
+    def __init__(self, rpm: int, rpd: int):
+        self.interval = 60 / rpm
+        self.rpd      = rpd
+        self.calls    = 0
+        self.next_t   = 0.0
+        self.lock     = asyncio.Lock()
+        self.exhaust  = False
 
     async def __aenter__(self):
-        async with self._lock:
+        if self.exhaust:
+            raise RuntimeError("daily-quota-exhausted")
+        async with self.lock:
             now = time.monotonic()
-            wait = self._next_time - now
+            wait = self.next_t - now
             if wait > 0:
                 await asyncio.sleep(wait)
-            self._next_time = max(now, self._next_time) + self._interval
+            self.next_t = max(now, self.next_t) + self.interval
+            self.calls += 1
+            if self.calls >= self.rpd:
+                self.exhaust = True
 
-    async def __aexit__(self, exc_type, exc, tb):
-        pass  # nothing
+    async def __aexit__(self, *_):
+        return False
 
+# ───────────────────────── Prompt & Chain 缓存 ────────────────
+root = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(root, "template.txt"), encoding="utf-8") as f:
+    HUMAN = f.read()
+with open(os.path.join(root, "system.txt"), encoding="utf-8") as f:
+    SYS   = f.read()
+PROMPT = ChatPromptTemplate.from_messages([("system", SYS), ("human", HUMAN)])
 
-# ──────────────────────────────────────────────
-# 3. 初始化 Prompt & Chain
-# ──────────────────────────────────────────────
-script_dir = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(script_dir, "template.txt"), encoding="utf-8") as f:
-    HUMAN_TMPL = f.read()
-with open(os.path.join(script_dir, "system.txt"), encoding="utf-8") as f:
-    SYSTEM_TMPL = f.read()
+CHAINS: Dict[Tuple[str, str], Optional[object]] = {}
+LIMITS: Dict[Tuple[str, str], ComboLimiter] = {}
 
-prompt_template = ChatPromptTemplate.from_messages(
-    [("system", SYSTEM_TMPL), ("human", HUMAN_TMPL)]
-)
-
-# 缓存 (api_key, model) → chain
-CHAIN_CACHE: Dict[Tuple[str, str], Optional[object]] = {}
 for key in API_KEYS:
-    for model in MODEL_LIST:
+    for model in MODELS:
+        rpml, rpdl = limit_of(model)
+        LIMITS[(key, model)] = ComboLimiter(rpml, rpdl)
         try:
-            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
-            chain = prompt_template | llm.with_structured_output(Structure)
-            CHAIN_CACHE[(key, model)] = chain
-            print(f"✔ 初始化 {model} @ {key[:6]}…")
+            llm = ChatGoogleGenerativeAI(model=model,
+                                         google_api_key=key,
+                                         max_retries=0)   # 禁止 SDK 重试
+            CHAINS[(key, model)] = PROMPT | llm.with_structured_output(Structure)
+            print(f"✔ {model:<18} @ {key[:6]}… RPM={rpml}, RPD={rpdl}")
         except Exception as e:
-            CHAIN_CACHE[(key, model)] = None
-            print(f"⚠ 无法初始化 {model} @ {key[:6]}…: {e}")
+            CHAINS[(key, model)] = None
+            print(f"⚠ 初始化失败 {model} @ {key[:6]}… {e}")
 
-# 为每个 Key 建立限流器
-LIMITERS = {key: KeyLimiter(RPM_PER_KEY) for key in API_KEYS}
+def valid(res: Structure):
+    d = res.model_dump()
+    return all(v and str(v).strip() for v in d.values())
 
-# ──────────────────────────────────────────────
-# 4. 工具函数
-# ──────────────────────────────────────────────
-def is_response_valid(resp: Structure) -> bool:
-    d = resp.model_dump() if resp else {}
-    return all((v and str(v).strip()) for v in d.values())
-
-async def try_chain(chain, prompt, limiter, retries):
-    """在 limiter 内调用 chain，带重试"""
-    for attempt in range(retries):
+# ───────────────────────── 调用函数 ───────────────────────────
+async def invoke(chain, prompt, limiter: ComboLimiter, retries=3):
+    for _ in range(retries):
         try:
-            async with limiter:           # 进入限流
-                start = time.perf_counter()
-                res = await chain.ainvoke(prompt)
-                latency = time.perf_counter() - start
-            if res and is_response_valid(res):
-                return res.model_dump()
-        except (google_exceptions.ResourceExhausted,
-                google_exceptions.NotFound) as perm:
-            raise perm                     # 永久性错误：外层处理
-        except Exception as e:
-            if attempt < retries - 1:
-                await asyncio.sleep(2)     # backoff
-    return None
+            async with limiter:
+                return await chain.ainvoke(prompt)
+        except RuntimeError:            # daily 用光
+            raise
+        except gexc.ResourceExhausted as e:
+            if "FreeTier" in str(e):
+                limiter.exhaust = True
+                raise RuntimeError("daily-quota-exhausted")
+            await asyncio.sleep(4)      # RPM 超限，退避
+        except Exception:
+            await asyncio.sleep(2)
+    raise RuntimeError("all-retries-failed")
 
-async def process_paper(paper: dict, retries: int, language: str):
-    prompt = {
-        "title":   paper["title"],
-        "content": paper["summary"],
-        "language": language,
-    }
-
-    # 按模型优先级，再按 Key 顺序
-    for model in MODEL_LIST:
+async def process(paper: dict, lang: str, retries: int):
+    prm = {"title": paper["title"], "content": paper["summary"], "language": lang}
+    for model in MODELS:
         for key in API_KEYS:
-            chain = CHAIN_CACHE.get((key, model))
-            if not chain:
+            combo = (key, model)
+            lim   = LIMITS[combo]
+            if lim.exhaust or not CHAINS[combo]:
                 continue
-            limiter = LIMITERS[key]
             try:
-                result = await try_chain(chain, prompt, limiter, retries)
-                if result:
-                    paper["AI"] = result
+                print(f"→ {paper['id']} using {model} @ {key[:6]}…")
+                res = await invoke(CHAINS[combo], prm, lim, retries)
+                if res and valid(res):
+                    paper["AI"] = res.model_dump()
                     return paper
-            except (google_exceptions.ResourceExhausted,
-                    google_exceptions.NotFound):
-                # 配额满 / 模型下线：换下一个组合
+            except RuntimeError:
                 continue
-            # 其他错误已在内部重试完
-    # 所有组合失败
-    paper["AI"] = {fld: "ERROR" for fld in Structure.model_fields.keys()}
+    paper["AI"] = {f: "ERROR" for f in Structure.model_fields.keys()}
     return paper
 
-# ──────────────────────────────────────────────
-# 5. 主入口
-# ──────────────────────────────────────────────
-async def main_async():
+# ───────────────────────── 主程 ───────────────────────────────
+async def main():
     args = parse_args()
 
-    # 读取 JSONL，去重 by id
+    # 读文件 & 去重
     with open(args.data, encoding="utf-8") as f:
-        seen = set()
-        data = []
-        for line in f:
-            if not line.strip(): continue
-            d = json.loads(line)
-            if d["id"] not in seen:
-                seen.add(d["id"])
-                data.append(d)
-    print(f"📑 待处理论文数: {len(data)}")
+        seen, data = set(), []
+        for ln in f:
+            if ln.strip():
+                d = json.loads(ln)
+                if d["id"] not in seen:
+                    seen.add(d["id"])
+                    data.append(d)
+    print(f"📑 总待处理: {len(data)} 篇")
 
-    tasks = [process_paper(p, args.retries, args.language) for p in data]
-    results: List[dict] = await asyncio.gather(*tasks, return_exceptions=False)
+    tasks = [process(p, args.language, args.retries) for p in data]
+    done  = await asyncio.gather(*tasks)
 
-    # 写文件
-    out_file = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
-    with open(out_file, "w", encoding="utf-8") as f:
-        for row in results:
+    outp = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
+    with open(outp, "w", encoding="utf-8") as f:
+        for row in done:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    ok = sum(1 for r in results if r["AI"]["summary"] != "ERROR")
-    print(f"✅ 完成: {ok}/{len(results)} 输出 → {out_file}")
+    ok = sum(r["AI"][next(iter(r["AI"]))] != "ERROR" for r in done)
+    print(f"✅ 完成 {ok}/{len(done)} → {outp}")
 
 if __name__ == "__main__":
-    asyncio.run(main_async())
+    asyncio.run(main())
