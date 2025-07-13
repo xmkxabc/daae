@@ -12,4 +12,6 @@ dependencies = [
     #"langchain_zhipu>=4.1.8",
     "langchain-google-genai>=2.1.3",
     "lunr>=0.7.0",
+    "python-dotenv>=1.0.0",
+    tqdm>=4.66.0",
 ]

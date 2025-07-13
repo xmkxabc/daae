@@ -1,50 +1,38 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-enhance_arxiv.py
-──────────────────────────────────────────────────────────────
-✓ 多 API-Key × 多模型
-✓ 免费档限流：模型级 (RPM + RPD)
-✓ 完全禁用自动重试：Google SDK + LangChain
-──────────────────────────────────────────────────────────────
-示例：
-  export GOOGLE_API_KEYS="keyA,keyB"
-  export MODEL_PRIORITY_LIST="gemini-2.5-flash,gemini-2.5-pro"
-  python enhance_arxiv.py --data papers.jsonl --language Chinese
+enhance_arxiv.py  —  AI-增强 arXiv JSONL（并行 + 进度条）
 """
 
-import os, sys, json, time, asyncio, argparse
+import os, sys, json, time, argparse, asyncio
 from typing import Dict, Tuple, List, Optional, Any
 
 import dotenv
+from tqdm import tqdm                        # 进度条
 from google.api_core import exceptions as gexc
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_google_genai.chat_models import _RetryDecorator, _AsyncRetryDecorator
 from langchain.prompts import ChatPromptTemplate
+from structure import Structure              # 你的 Pydantic 输出结构
 
-from structure import Structure   # ← 你的 Pydantic 输出结构
-
-# ───────────────── 1. 自定义 LLM：彻底禁用所有自动重试 ────────────────
-def _identity(f):  # 恒等装饰器
-    return f
+# ───────── 1 · 自定义 LLM：彻底禁用所有自动重试 ──────────
+def _no_retry_deco(func):
+    return func                              # 恒等装饰器
 
 class ChatGoogleNoRetry(ChatGoogleGenerativeAI):
-    """
-    1) 给 Google SDK 传 request_options={"retry": False} → 不指数退避
-    2) 把 LangChain 内部 _retry_decorator/_async_retry_decorator 改为恒等
-    """
     def __init__(self, *args, **kwargs):
-        # 1. 强制 request_options.retry=False
+        # ① 让 Google-SDK 不重试
         req_opts = dict(kwargs.pop("request_options", {}) or {})
         req_opts["retry"] = False
         super().__init__(*args, request_options=req_opts, **kwargs)
 
-        # 2. 清空 LangChain 层的同步 & 异步 retry 装饰器
-        self._retry_decorator = _RetryDecorator(_identity, reraise=True)
-        self._async_retry_decorator = _AsyncRetryDecorator(_identity, reraise=True)
+        # ② LangChain 重试装饰器 → 恒等
+        if hasattr(self, "_retry_decorator"):
+            self._retry_decorator = _no_retry_deco
+        if hasattr(self, "_async_retry_decorator"):
+            self._async_retry_decorator = _no_retry_deco
 
-# ───────────────── 2. 免费额度表（官方 2025-07） ─────────────────────────
-FREE_LIMITS: Dict[str, Dict[str, int]] = {
+# ───────── 2 · 免费额度表 ────────────────────────────────
+FREE_LIMITS = {
     "gemini-2.5-flash":   {"rpm": 10, "rpd": 250},
     "gemini-2.5-pro":     {"rpm": 5,  "rpd": 100},
     "gemini-2.5-flash-l": {"rpm": 15, "rpd": 1000},
@@ -57,23 +45,25 @@ def quota_of(model: str) -> Tuple[int, int]:
     for p, q in FREE_LIMITS.items():
         if model.startswith(p):
             return q["rpm"], q["rpd"]
-    return 10, 250   # 默认
+    return 10, 250
 
-# ───────────────── 3. CLI & 环境变量 ────────────────────────────────────
+# ───────── 3 · CLI & ENV ────────────────────────────────
 def cli():
     ap = argparse.ArgumentParser(description="Enhance arXiv JSONL with Gemini")
-    ap.add_argument("--data", required=True, help="输入 JSONL 文件")
+    ap.add_argument("--data", required=True)
     ap.add_argument("--language", default="Chinese")
-    ap.add_argument("--retries", type=int, default=3, help="瞬时错误重试次数")
+    ap.add_argument("--retries", type=int, default=3)
+    ap.add_argument("--concurrency", type=int, default=10,
+                    help="同时并发的论文数（默认10）")
     return ap.parse_args()
 
 dotenv.load_dotenv()
 API_KEYS = [k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()]
 MODELS   = [m.strip() for m in os.getenv("MODEL_PRIORITY_LIST", "").split(",") if m.strip()]
 if not API_KEYS or not MODELS:
-    sys.exit("❌ 请设置环境变量 GOOGLE_API_KEYS 与 MODEL_PRIORITY_LIST")
+    sys.exit("❌ 缺少 GOOGLE_API_KEYS 或 MODEL_PRIORITY_LIST 环境变量")
 
-# ───────────────── 4. ComboLimiter：按 (key, model) 控制 RPM & RPD ──────
+# ───────── 4 · ComboLimiter：按 (key, model) 控制 RPM & RPD ─────────
 class ComboLimiter:
     def __init__(self, rpm: int, rpd: int):
         self.interval = 60 / rpm
@@ -82,7 +72,6 @@ class ComboLimiter:
         self.next_t = 0.0
         self.exhaust = False
         self.lock = asyncio.Lock()
-
     async def __aenter__(self):
         if self.exhaust:
             raise RuntimeError("day-quota-exhausted")
@@ -95,12 +84,11 @@ class ComboLimiter:
             self.calls += 1
             if self.calls >= self.rpd:
                 self.exhaust = True
-
     async def __aexit__(self, *_):
         return False
 
-# ───────────────── 5. Prompt & Chain 初始化 ─────────────────────────────
-ROOT = os.path.abspath(os.path.dirname(__file__))
+# ───────── 5 · Prompt 与 Chain / Limiter 初始化 ──────────
+ROOT = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(ROOT, "system.txt"), encoding="utf-8") as f:
     SYS = f.read()
 with open(os.path.join(ROOT, "template.txt"), encoding="utf-8") as f:
@@ -108,53 +96,50 @@ with open(os.path.join(ROOT, "template.txt"), encoding="utf-8") as f:
 PROMPT = ChatPromptTemplate.from_messages([("system", SYS), ("human", HUMAN)])
 
 CHAINS: Dict[Tuple[str, str], Optional[Any]] = {}
-LIMITERS: Dict[Tuple[str, str], ComboLimiter] = {}
+LIMITER: Dict[Tuple[str, str], ComboLimiter] = {}
 
 for key in API_KEYS:
     for model in MODELS:
         rpm, rpd = quota_of(model)
-        LIMITERS[(key, model)] = ComboLimiter(rpm, rpd)
+        LIMITER[(key, model)] = ComboLimiter(rpm, rpd)
         try:
-            # 新版 SDK 用 google_api_key=；若提示未知参数就换成 api_key=
-            llm = ChatGoogleNoRetry(model=model, google_api_key=key, max_retries=1)
-        except TypeError:
-            llm = ChatGoogleNoRetry(model=model, api_key=key, max_retries=1)
+            llm = ChatGoogleNoRetry(model=model, google_api_key=key)
+        except TypeError:               # 适配旧版 SDK
+            llm = ChatGoogleNoRetry(model=model, api_key=key)
+        CHAINS[(key, model)] = PROMPT | llm.with_structured_output(Structure)
+        print(f"✔ {model:<18} @ {key[:6]}… RPM={rpm} RPD={rpd}")
 
-        chain = PROMPT | llm.with_structured_output(Structure)
-        CHAINS[(key, model)] = chain
-        print(f"✔ {model:<18} @ {key[:6]}…  RPM={rpm}  RPD={rpd}")
+def good(res: Structure) -> bool:
+    d = res.model_dump()
+    return all(v and str(v).strip() for v in d.values())
 
-def good(resp: Structure) -> bool:
-    d = resp.model_dump(); return all(v and str(v).strip() for v in d.values())
-
-# ───────────────── 6. 调用包装 ──────────────────────────────────────────
-async def invoke(chain, prompt, limiter: ComboLimiter, retries: int):
+# ───────── 6 · 封装调用 ─────────────────────────────────
+async def invoke(chain, prompt, lim: ComboLimiter, retries: int):
     for _ in range(retries):
         try:
-            async with limiter:
+            async with lim:
                 return await chain.ainvoke(prompt)
         except RuntimeError:
-            raise                              # 当天额度用光 → 外层封禁
+            raise
         except gexc.ResourceExhausted as e:
             if "FreeTier" in str(e):
-                limiter.exhaust = True
+                lim.exhaust = True
                 raise RuntimeError("day-quota-exhausted")
-            await asyncio.sleep(4)            # 瞬时超 RPM
+            await asyncio.sleep(4)      # RPM 超
         except Exception:
             await asyncio.sleep(2)
     raise RuntimeError("invoke-retries-exhausted")
 
-async def process(paper: dict, lang: str, retries: int):
+# ───────── 7 · 处理单篇论文 ────────────────────────────
+async def process_paper(paper: dict, lang: str, retries: int):
     prm = {"title": paper["title"], "content": paper["summary"], "language": lang}
     for model in MODELS:
         for key in API_KEYS:
-            combo = (key, model)
-            lim   = LIMITERS[combo]
-            chain = CHAINS[combo]
+            lim = LIMITER[(key, model)]
+            chain = CHAINS[(key, model)]
             if lim.exhaust or chain is None:
                 continue
             try:
-                print(f"→ {paper['id']} via {model} @ {key[:6]}…")
                 res = await invoke(chain, prm, lim, retries)
                 if res and good(res):
                     paper["AI"] = res.model_dump()
@@ -164,29 +149,43 @@ async def process(paper: dict, lang: str, retries: int):
     paper["AI"] = {f: "ERROR" for f in Structure.model_fields.keys()}
     return paper
 
-# ───────────────── 7. 主入口 ───────────────────────────────────────────
+# ───────── 8 · 主函数（并行 + 进度条） ─────────────────
 async def main():
     args = cli()
 
-    # 读 & 去重
+    # 读文件 & 去重
     with open(args.data, encoding="utf-8") as f:
-        seen, data = set(), []
+        seen, papers = set(), []
         for ln in f:
             if ln.strip():
                 d = json.loads(ln)
                 if d["id"] not in seen:
-                    seen.add(d["id"]); data.append(d)
-    print(f"\n📑 待处理：{len(data)} 篇\n")
+                    seen.add(d["id"]); papers.append(d)
+    total = len(papers)
+    print(f"\n📑 待处理论文：{total} 篇  |  并发 {args.concurrency}\n")
 
-    results = await asyncio.gather(*(process(p, args.language, args.retries) for p in data))
+    # 并发控制 Semaphore
+    sem = asyncio.Semaphore(args.concurrency)
+    async def wrapped(p):
+        async with sem:
+            return await process_paper(p, args.language, args.retries)
 
+    tasks = [wrapped(p) for p in papers]
+    processed: List[dict] = []
+    with tqdm(total=total, desc="Processing", unit="paper") as bar:
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            processed.append(result)
+            bar.update()
+
+    # 写结果
     outp = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
     with open(outp, "w", encoding="utf-8") as f:
-        for r in results:
+        for r in processed:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
-    ok_cnt = sum(r["AI"][next(iter(r["AI"]))] != "ERROR" for r in results)
-    print(f"\n✅ 成功 {ok_cnt}/{len(results)} ➜ {outp}")
+    ok_cnt = sum(r["AI"][next(iter(r["AI"]))] != "ERROR" for r in processed)
+    print(f"\n✅ 完成 {ok_cnt}/{total} ➜ {outp}")
 
 if __name__ == "__main__":
     asyncio.run(main())
