@@ -1271,6 +1271,19 @@
             color: #fca5a5;
         }
         
+        .paper-link-alphaxiv {
+            color: #4f46e5;
+            transition: color 0.2s ease;
+        }
+        .paper-link-alphaxiv:hover {
+            color: #3730a3;
+        }
+        [data-theme="dark"] .paper-link-alphaxiv {
+            color: #818cf8;
+        }
+        [data-theme="dark"] .paper-link-alphaxiv:hover {
+            color: #a78bfa;
+        }
         /* ===== 移动端优化样式 ===== */
         
         /* 基础响应式设置 */
@@ -1537,6 +1550,9 @@
             
             .paper-link-pdf {
                 background-color: rgba(239, 68, 68, 0.1);
+            }
+            .paper-link-alphaxiv {
+                background-color: rgba(79, 70, 229, 0.1);
             }
         }
         
@@ -5089,6 +5105,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             <div class="flex items-center space-x-4 mt-4">
                 <a href="${absUrl}" target="_blank" class="paper-link-abstract font-semibold">摘要页</a>
                 <a href="${pdfUrl}" target="_blank" class="paper-link-pdf font-semibold">PDF</a>
+                <a href="https://www.alphaxiv.org/overview/${paper.id}" target="_blank" class="paper-link-alphaxiv font-semibold">AlphaXiv</a>
                 <button data-action="toggle-ai-details" data-paper-id="${paper.id}" class="ml-auto ai-toggle-btn font-bold py-2 px-4 rounded-lg transition compact-hidden">AI分析</button>
             </div>
         `;
