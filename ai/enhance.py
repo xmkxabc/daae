@@ -93,7 +93,7 @@ for key in API_KEYS:
         try:
             llm = ChatGoogleGenerativeAI(model=model,
                                          google_api_key=key,
-                                         max_retries=0)   # 禁止 SDK 重试
+                                         max_retries=1)   # 只调一次，失败立刻抛异常
             CHAINS[(key, model)] = PROMPT | llm.with_structured_output(Structure)
             print(f"✔ {model:<18} @ {key[:6]}… RPM={rpml}, RPD={rpdl}")
         except Exception as e:
