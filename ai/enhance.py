@@ -1,196 +1,178 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-enhance_arxiv.py
-──────────────────────────────────────────────────────────────
-✓ 多 API-Key × 多模型
-✓ 免费档限流：模型级别 RPM + RPD
-✓ Google SDK 零重试：自定义 ChatGoogleNoRetry
-──────────────────────────────────────────────────────────────
-用法示例：
-  export GOOGLE_API_KEYS="keyA,keyB,keyC"
-  export MODEL_PRIORITY_LIST="gemini-2.5-flash,gemini-2.5-pro"
-  python enhance_arxiv.py --data papers.jsonl --language Chinese
+enhance_arxiv.py  —  多 Key × 多模型 × 免费限流（兼容旧版 SDK，无自动重试）
 """
 
-import os, sys, json, time, asyncio, argparse, re
-from typing import Dict, Tuple, Optional, Any
+import os, sys, json, time, asyncio, argparse
+from typing import Dict, Tuple, List, Optional, Any
 
 import dotenv
-from google.api_core.retry import Retry
 from google.api_core import exceptions as gexc
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
+from google.api_core.retry import Retry
 
-from structure import Structure                 # ← 你自己的 Pydantic 输出结构
+from structure import Structure
 
-# ────────────────────────────── 自定义 LLM ──────────────────────────────
-# 关闭 Google SDK 的指数退避（Retry → 0 次）
-_NO_RETRY = Retry(predicate=lambda *_: False, max_tries=1)
-
+# ─────────────────── 1 · 自定义 LLM：彻底禁掉 SDK 重试 ───────────────────
+_ID = lambda f: f
 class ChatGoogleNoRetry(ChatGoogleGenerativeAI):
-    """调用 Gemini API，但完全不自动重试。"""
-    def _get_retry_decorator(
-        self,
-        run_manager: Optional[Any] = None,
-        max_retries: Optional[int] = None,
-    ):
-        return _NO_RETRY
+    def _get_retry_decorator(self, *_, **__):       # 同步
+        return _ID
+    def _get_retry_decorator_async(self, *_, **__): # 异步
+        return _ID
 
-# ────────────────────── 免费额度表：参考官方文档 ────────────────────────
-FREE_LIMITS: Dict[str, Dict[str, int]] = {
-    # prefix                   rpm   rpd
-    "gemini-2.5-flash":      {"rpm": 10, "rpd": 250},
-    "gemini-2.5-pro":        {"rpm": 5,  "rpd": 100},
-    "gemini-2.5-flash-l":    {"rpm": 15, "rpd": 1000},
-    "gemini-2.0-flash":      {"rpm": 15, "rpd": 200},
-    "gemini-2.0-flash-l":    {"rpm": 30, "rpd": 200},
-    "gemini-1.5-flash":      {"rpm": 15, "rpd": 50},
-    "gemini-1.5-pro":        {"rpm": 2,  "rpd": 50},
+# ─────────────────── 2 · 免费额度表（官方 2025-07） ───────────────────
+FREE_LIMITS = {
+    "gemini-2.5-flash":   {"rpm": 10, "rpd": 250},
+    "gemini-2.5-pro":     {"rpm": 5,  "rpd": 100},
+    "gemini-2.5-flash-l": {"rpm": 15, "rpd": 1000},
+    "gemini-2.0-flash":   {"rpm": 15, "rpd": 200},
+    "gemini-2.0-flash-l": {"rpm": 30, "rpd": 200},
+    "gemini-1.5-flash":   {"rpm": 15, "rpd": 50},
+    "gemini-1.5-pro":     {"rpm": 2,  "rpd": 50},
 }
-
 def quota_of(model: str) -> Tuple[int, int]:
-    """返回 (rpm, rpd)，未知模型默认 10/250。"""
-    for prefix, lim in FREE_LIMITS.items():
-        if model.startswith(prefix):
-            return lim["rpm"], lim["rpd"]
+    for p, q in FREE_LIMITS.items():
+        if model.startswith(p):
+            return q["rpm"], q["rpd"]
     return 10, 250
 
-# ─────────────────────────── Command-line ───────────────────────────────
-def cli() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Asynchronously enhance arXiv JSONL with Gemini")
-    p.add_argument("--data", required=True, help="输入 JSONL")
-    p.add_argument("--language", default="Chinese")
-    p.add_argument("--retries", type=int, default=3, help="瞬时错误重试次数")
-    return p.parse_args()
+# ─────────────────── 3 · CLI & 环境变量 ───────────────────
+def cli():
+    ap = argparse.ArgumentParser(description="Enhance arXiv JSONL with Gemini")
+    ap.add_argument("--data", required=True)
+    ap.add_argument("--language", default="Chinese")
+    ap.add_argument("--retries", type=int, default=3)
+    return ap.parse_args()
 
-dotenv.load_dotenv(override=False)
+dotenv.load_dotenv()
 API_KEYS = [k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()]
 MODELS   = [m.strip() for m in os.getenv("MODEL_PRIORITY_LIST", "").split(",") if m.strip()]
 if not API_KEYS or not MODELS:
-    sys.exit("❌ 环境变量 GOOGLE_API_KEYS 或 MODEL_PRIORITY_LIST 未设置。")
+    sys.exit("❌ 请设置 GOOGLE_API_KEYS 与 MODEL_PRIORITY_LIST")
 
-# ─────────────────────────── 限流器 ──────────────────────────────────────
+# ─────────────────── 4 · ComboLimiter ───────────────────
 class ComboLimiter:
-    """按 (key, model) 粒度同时控制 RPM 与 RPD。"""
     def __init__(self, rpm: int, rpd: int):
         self.interval = 60 / rpm
         self.rpd = rpd
         self.calls = 0
-        self.next_t = 0.0
-        self.exhausted = False
+        self.next = 0.0
+        self.exhaust = False
         self.lock = asyncio.Lock()
-
     async def __aenter__(self):
-        if self.exhausted:
-            raise RuntimeError("daily-limit-exhausted")
+        if self.exhaust:
+            raise RuntimeError("day-quota-exhausted")
         async with self.lock:
             now = time.monotonic()
-            wait = self.next_t - now
+            wait = self.next - now
             if wait > 0:
                 await asyncio.sleep(wait)
-            self.next_t = max(now, self.next_t) + self.interval
+            self.next = max(now, self.next) + self.interval
             self.calls += 1
             if self.calls >= self.rpd:
-                self.exhausted = True
+                self.exhaust = True
+    async def __aexit__(self, *_): ...
 
-    async def __aexit__(self, *_):
-        return False
-
-# ──────────────────── Prompt 模板与 Chain 构建 ───────────────────────────
-root = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(root, "template.txt"), encoding="utf-8") as f:
-    HUMAN_TMPL = f.read()
+# ─────────────────── 5 · Prompt & Chain 初始化 ───────────────────
+root = os.path.abspath(os.path.dirname(__file__))
 with open(os.path.join(root, "system.txt"), encoding="utf-8") as f:
-    SYSTEM_TMPL = f.read()
-PROMPT = ChatPromptTemplate.from_messages([("system", SYSTEM_TMPL),
-                                           ("human",  HUMAN_TMPL)])
+    SYS = f.read()
+with open(os.path.join(root, "template.txt"), encoding="utf-8") as f:
+    HUMAN = f.read()
+PROMPT = ChatPromptTemplate.from_messages([("system", SYS), ("human", HUMAN)])
 
-CHAINS: Dict[Tuple[str, str], Optional[Any]] = {}
-LIMITERS: Dict[Tuple[str, str], ComboLimiter] = {}
+CHAINS:  Dict[Tuple[str, str], Optional[Any]] = {}
+LIMITER: Dict[Tuple[str, str], ComboLimiter] = {}
 
 for key in API_KEYS:
     for model in MODELS:
         rpm, rpd = quota_of(model)
-        LIMITERS[(key, model)] = ComboLimiter(rpm, rpd)
+        LIMITER[(key, model)] = ComboLimiter(rpm, rpd)
+
+        # —— 兼容两套参数名 —— #
         try:
             llm = ChatGoogleNoRetry(model=model,
-                                    google_api_key=key,
-                                    max_retries=1)        # 只调用一次
-            chain = PROMPT | llm.with_structured_output(Structure)
-            CHAINS[(key, model)] = chain
-            print(f"✔  {model:<18} @ {key[:6]}…  RPM={rpm}  RPD={rpd}")
-        except Exception as e:
-            CHAINS[(key, model)] = None
-            print(f"⚠️  初始化失败 {model} @ {key[:6]}…：{e}")
+                                    google_api_key=key,  # 新版
+                                    max_retries=1)
+        except TypeError as e:
+            if "google_api_key" in str(e): # 检查是否是旧版本导致的不兼容错误
+                try:
+                    # 回退到旧版的 'api_key' 参数
+                    llm = ChatGoogleNoRetry(model=model,
+                                            api_key=key,      # 旧版
+                                            max_retries=1)
+                except Exception: # 如果回退尝试也失败，则将此组合视为不可用
+                    llm = None
+            else:
+                llm = None
+        if llm is None:
+            CHAIN = None
+        else:
+            CHAIN = PROMPT | llm.with_structured_output(Structure)
 
-def is_valid(res: Structure) -> bool:
-    d = res.model_dump()
-    return all(v and str(v).strip() for v in d.values())
+        CHAINS[(key, model)] = CHAIN
+        stat = "✔" if CHAIN else "⚠️"
+        print(f"{stat} {model:<18} @ {key[:6]}… RPM={rpm}, RPD={rpd}")
 
-# ──────────────────── 调用封装 ───────────────────────────────────────────
-async def try_invoke(chain, prompt, limiter: ComboLimiter, retries: int):
+def ok(resp: Structure) -> bool:
+    d = resp.model_dump(); return all(v and str(v).strip() for v in d.values())
+
+# ─────────────────── 6 · 封装调用 ───────────────────
+async def invoke(chain, prompt, lim: ComboLimiter, retries: int):
     for _ in range(retries):
         try:
-            async with limiter:
+            async with lim:
                 return await chain.ainvoke(prompt)
-        except RuntimeError:                      # day-quota exhausted
+        except RuntimeError:
             raise
         except gexc.ResourceExhausted as e:
             if "FreeTier" in str(e):
-                limiter.exhausted = True
-                raise RuntimeError("daily-limit-exhausted")
-            await asyncio.sleep(4)                # RPM 超限，稍退避
+                lim.exhaust = True
+                raise RuntimeError("day-quota-exhausted")
+            await asyncio.sleep(4)           # RPM 超, 退避
         except Exception:
             await asyncio.sleep(2)
-    raise RuntimeError("all-retries-failed")
+    raise RuntimeError("retry-failed")
 
-async def process_paper(paper: dict, lang: str, retries: int):
+async def process(paper: dict, lang: str, retries: int):
     prm = {"title": paper["title"], "content": paper["summary"], "language": lang}
-
-    for model in MODELS:
-        for key in API_KEYS:
-            combo = (key, model)
-            lim   = LIMITERS[combo]
-            chain = CHAINS[combo]
-            if lim.exhausted or chain is None:
-                continue
+    for m in MODELS:
+        for k in API_KEYS:
+            lim = LIMITER[(k, m)]; chain = CHAINS[(k, m)]
+            if lim.exhaust or chain is None: continue
             try:
-                print(f"→ {paper['id']}  via {model} @ {key[:6]}…")
-                res = await try_invoke(chain, prm, lim, retries)
-                if res and is_valid(res):
-                    paper["AI"] = res.model_dump()
-                    return paper
+                print(f"→ {paper['id']} via {m} @ {k[:6]}…")
+                r = await invoke(chain, prm, lim, retries)
+                if r and ok(r):
+                    paper["AI"] = r.model_dump(); return paper
             except RuntimeError:
                 continue
     paper["AI"] = {f: "ERROR" for f in Structure.model_fields.keys()}
     return paper
 
-# ──────────────────── 主入口 ────────────────────────────────────────────
+# ─────────────────── 7 · 主函数 ───────────────────
 async def main():
     args = cli()
-
-    # 读取 JSONL & 去重
     with open(args.data, encoding="utf-8") as f:
         seen, data = set(), []
         for ln in f:
             if ln.strip():
                 d = json.loads(ln)
                 if d["id"] not in seen:
-                    seen.add(d["id"])
-                    data.append(d)
-    print(f"\n📑 代处理论文数: {len(data)}\n")
+                    seen.add(d["id"]); data.append(d)
+    print(f"\n📑 待处理：{len(data)} 篇\n")
 
-    tasks = [process_paper(p, args.language, args.retries) for p in data]
-    results = await asyncio.gather(*tasks)
+    res = await asyncio.gather(*(process(p, args.language, args.retries) for p in data))
 
-    out_file = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
-    with open(out_file, "w", encoding="utf-8") as f:
-        for row in results:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-    ok = sum(r["AI"][next(iter(r["AI"]))] != "ERROR" for r in results)
-    print(f"\n✅ 成功 {ok}/{len(results)}  ➜  {out_file}")
+    outp = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
+    with open(outp, "w", encoding="utf-8") as f:
+        for r in res:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    ok_cnt = sum(r["AI"][next(iter(r["AI"]))] != "ERROR" for r in res)
+    print(f"\n✅ 成功 {ok_cnt}/{len(res)} ➜ {outp}")
 
 if __name__ == "__main__":
     asyncio.run(main())
