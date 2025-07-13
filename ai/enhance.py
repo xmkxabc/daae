@@ -1,207 +1,170 @@
-import os
-import json
-import sys
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+异步并发版：多密钥、每 Key 10 RPM
+"""
+
+import os, sys, json, time, argparse, asyncio
+from typing import Dict, Tuple, List, Optional
+
 import dotenv
-import argparse
-import time
-
-import langchain_core.exceptions
-from langchain_google_genai import ChatGoogleGenerativeAI
-# **新增**: 明确导入需要的异常类型
 from google.api_core import exceptions as google_exceptions
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import ChatPromptTemplate
-from structure import Structure
 
-# 加载环境变量
-if os.path.exists('.env'):
-    dotenv.load_dotenv()
+from structure import Structure   # 你的 Pydantic 输出结构
 
-# --- 文件加载 ---
+# ──────────────────────────────────────────────
+# 1. CLI & 环境变量
+# ──────────────────────────────────────────────
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="Async arXiv AI enhancer")
+    p.add_argument("--data", required=True, help="输入 JSONL")
+    p.add_argument("--retries", type=int, default=3, help="瞬时错误重试次数")
+    p.add_argument("--language", default="Chinese", help="输出语言")
+    return p.parse_args()
+
+dotenv.load_dotenv(override=False)
+API_KEYS = [k.strip() for k in os.getenv("GOOGLE_API_KEYS", "").split(",") if k.strip()]
+MODEL_LIST = [m.strip() for m in os.getenv("MODEL_PRIORITY_LIST", "").split(",") if m.strip()]
+if not API_KEYS or not MODEL_LIST:
+    sys.exit("❌ 需要环境变量 GOOGLE_API_KEYS 和 MODEL_PRIORITY_LIST")
+
+# RPM_PER_KEY = 10                # 免费 10 请求/分
+PER_CALL_INTERVAL = int(os.environ.get("API_CALL_INTERVAL", 6))    # 6 s
+RPM_PER_KEY = 60 // PER_CALL_INTERVAL  # 每 Key 的速率限制 (每分钟请求数)
+
+# ──────────────────────────────────────────────
+# 2. 速率限制器：每 Key 独立
+# ──────────────────────────────────────────────
+class KeyLimiter:
+    def __init__(self, rpm: int):
+        self._interval = 60 / rpm
+        self._next_time = 0.0
+        self._lock = asyncio.Lock()
+
+    async def __aenter__(self):
+        async with self._lock:
+            now = time.monotonic()
+            wait = self._next_time - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._next_time = max(now, self._next_time) + self._interval
+
+    async def __aexit__(self, exc_type, exc, tb):
+        pass  # nothing
+
+
+# ──────────────────────────────────────────────
+# 3. 初始化 Prompt & Chain
+# ──────────────────────────────────────────────
 script_dir = os.path.dirname(os.path.abspath(__file__))
-try:
-    with open(os.path.join(script_dir, "template.txt"), "r", encoding="utf-8") as f:
-        template_content = f.read()
-    with open(os.path.join(script_dir, "system.txt"), "r", encoding="utf-8") as f:
-        system_prompt_template = f.read()
-except FileNotFoundError as e:
-    print(f"错误：找不到必需的模板文件: {e}。搜索路径: {script_dir}", file=sys.stderr)
-    sys.exit(1)
+with open(os.path.join(script_dir, "template.txt"), encoding="utf-8") as f:
+    HUMAN_TMPL = f.read()
+with open(os.path.join(script_dir, "system.txt"), encoding="utf-8") as f:
+    SYSTEM_TMPL = f.read()
 
+prompt_template = ChatPromptTemplate.from_messages(
+    [("system", SYSTEM_TMPL), ("human", HUMAN_TMPL)]
+)
 
-def parse_args():
-    """解析命令行参数。"""
-    parser = argparse.ArgumentParser(description="使用AI摘要增强arXiv数据。")
-    parser.add_argument("--data", type=str, required=True, help="要处理的JSONL数据文件。")
-    parser.add_argument("--retries", type=int, default=3, help="对每个模型任务的最大重试次数。")
-    parser.add_argument("--timeout", type=int, default=1, help="失败尝试之间的等待秒数。")
-    return parser.parse_args()
-
-def is_response_valid(result: Structure):
-    """验证响应，确保所有字段都为非空字符串。"""
-    if not result:
-        return False
-    result_dict = result.model_dump()
-    all_fields = Structure.model_fields.keys()
-    for field in all_fields:
-        value = result_dict.get(field)
-        if value is None or (isinstance(value, str) and not value.strip()):
-            return False
-    return True
-
-def main():
-    """主函数，运行增强过程。"""
-    args = parse_args()
-    
-    # --- [核心改造] 加载统一的密钥和模型优先级列表 ---
-    google_api_keys_str = os.environ.get("GOOGLE_API_KEYS")
-    model_priority_list_str = os.environ.get("MODEL_PRIORITY_LIST")
-    # [新] 从环境变量加载API调用间隔，默认为6秒以遵循10 RPM的限制
-    api_call_interval = int(os.environ.get("API_CALL_INTERVAL", 6))
-
-
-    if not google_api_keys_str or not model_priority_list_str:
-        print("错误: 请在 .env 文件中设置 GOOGLE_API_KEYS 和 MODEL_PRIORITY_LIST 环境变量。", file=sys.stderr)
-        sys.exit(1)
-
-    api_keys = [key.strip() for key in google_api_keys_str.split(',') if key.strip()]
-    model_names = [name.strip() for name in model_priority_list_str.split(',') if name.strip()]
-
-    if not api_keys or not model_names:
-        print("错误: GOOGLE_API_KEYS 或 MODEL_PRIORITY_LIST 环境变量不能为空。", file=sys.stderr)
-        sys.exit(1)
-        
-    # --- [核心改造] 构建级联调用计划 ---
-    # 策略: 优先使用最高优先级的模型，轮询所有密钥。
-    cascade_plan = []
-    # 外层循环遍历模型列表 (Outer loop for models)
-    for model_name in model_names:
-        # 内层循环遍历密钥列表 (Inner loop for keys)
-        for i, api_key in enumerate(api_keys):
-            cascade_plan.append({
-                "key_name": f"密钥_{i+1}",
-                "api_key": api_key,
-                "model_name": model_name
-            })
-            
-    if not cascade_plan:
-        print("错误: 无法根据环境变量构建有效的调用计划。", file=sys.stderr)
-        sys.exit(1)
-        
-    print("--- 调用计划已构建 ---", file=sys.stderr)
-    for i, task in enumerate(cascade_plan):
-        print(f"  优先级 {i+1}: <{task['key_name']}> - {task['model_name']}", file=sys.stderr)
-    print("----------------------", file=sys.stderr)
-
-
-    language = os.environ.get("LANGUAGE", 'Chinese')
-
-    # 读取和预处理数据
-    try:
-        with open(args.data, "r", encoding="utf-8") as f:
-            data = [json.loads(line) for line in f if line.strip()]
-    except Exception as e:
-        print(f"错误: 处理文件 {args.data} 时出错: {e}", file=sys.stderr)
-        return
-    seen_ids = set()
-    unique_data = [item for item in data if item.get('id') not in seen_ids and not seen_ids.add(item['id'])]
-    data = unique_data
-    print(f"从 {args.data} 加载了 {len(data)} 篇不重复的论文", file=sys.stderr)
-
-    prompt_template = ChatPromptTemplate.from_messages([
-        ("system", system_prompt_template),
-        ("human", template_content)
-    ])
-
-    # 预先初始化所有需要的调用链
-    model_chains = {}
-    for task in cascade_plan:
-        key = (task["api_key"], task["model_name"])
-        if key in model_chains: continue
+# 缓存 (api_key, model) → chain
+CHAIN_CACHE: Dict[Tuple[str, str], Optional[object]] = {}
+for key in API_KEYS:
+    for model in MODEL_LIST:
         try:
-            llm = ChatGoogleGenerativeAI(model=task["model_name"], google_api_key=task["api_key"])
-            structured_llm = llm.with_structured_output(Structure)
-            chain = prompt_template | structured_llm
-            model_chains[key] = chain
-            print(f"模型已为<{task['key_name']}>成功设置: {task['model_name']}", file=sys.stderr)
+            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+            chain = prompt_template | llm.with_structured_output(Structure)
+            CHAIN_CACHE[(key, model)] = chain
+            print(f"✔ 初始化 {model} @ {key[:6]}…")
         except Exception as e:
-            model_chains[key] = None
-            print(f"警告：无法为<{task['key_name']}>初始化模型 {task['model_name']}。错误：{e}", file=sys.stderr)
+            CHAIN_CACHE[(key, model)] = None
+            print(f"⚠ 无法初始化 {model} @ {key[:6]}…: {e}")
 
-    enhanced_data = []
-    total_failures = 0
-    
-    current_task_index = 0
+# 为每个 Key 建立限流器
+LIMITERS = {key: KeyLimiter(RPM_PER_KEY) for key in API_KEYS}
 
-    for idx, d in enumerate(data):
-        print(f"\n正在处理 {idx + 1}/{len(data)}: {d['id']}", file=sys.stderr)
-        final_result = None
-        
-        # 保存当前任务索引，以便在论文级别进行重置
-        paper_start_task_index = current_task_index
-        
-        while paper_start_task_index < len(cascade_plan):
-            task = cascade_plan[paper_start_task_index]
-            key = (task["api_key"], task["model_name"])
-            chain = model_chains.get(key)
+# ──────────────────────────────────────────────
+# 4. 工具函数
+# ──────────────────────────────────────────────
+def is_response_valid(resp: Structure) -> bool:
+    d = resp.model_dump() if resp else {}
+    return all((v and str(v).strip()) for v in d.values())
 
+async def try_chain(chain, prompt, limiter, retries):
+    """在 limiter 内调用 chain，带重试"""
+    for attempt in range(retries):
+        try:
+            async with limiter:           # 进入限流
+                start = time.perf_counter()
+                res = await chain.ainvoke(prompt)
+                latency = time.perf_counter() - start
+            if res and is_response_valid(res):
+                return res.model_dump()
+        except (google_exceptions.ResourceExhausted,
+                google_exceptions.NotFound) as perm:
+            raise perm                     # 永久性错误：外层处理
+        except Exception as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(2)     # backoff
+    return None
+
+async def process_paper(paper: dict, retries: int, language: str):
+    prompt = {
+        "title":   paper["title"],
+        "content": paper["summary"],
+        "language": language,
+    }
+
+    # 按模型优先级，再按 Key 顺序
+    for model in MODEL_LIST:
+        for key in API_KEYS:
+            chain = CHAIN_CACHE.get((key, model))
             if not chain:
-                print(f"  ! 跳过已失败的任务: <{task['key_name']}> - {task['model_name']}", file=sys.stderr)
-                paper_start_task_index += 1
-                # 更新全局任务索引
-                current_task_index = paper_start_task_index
                 continue
+            limiter = LIMITERS[key]
+            try:
+                result = await try_chain(chain, prompt, limiter, retries)
+                if result:
+                    paper["AI"] = result
+                    return paper
+            except (google_exceptions.ResourceExhausted,
+                    google_exceptions.NotFound):
+                # 配额满 / 模型下线：换下一个组合
+                continue
+            # 其他错误已在内部重试完
+    # 所有组合失败
+    paper["AI"] = {fld: "ERROR" for fld in Structure.model_fields.keys()}
+    return paper
 
-            for attempt in range(args.retries):
-                print(f"  使用: <{task['key_name']}> - {task['model_name']} (尝试 {attempt + 1}/{args.retries})", file=sys.stderr)
-                try:
-                    response_object = chain.invoke({
-                        "title": d['title'],
-                        "content": d['summary'],
-                        "language": language
-                    })
-                    if response_object and is_response_valid(response_object):
-                        final_result = response_object.model_dump()
-                        print("  > 尝试成功", file=sys.stderr)
-                        break 
+# ──────────────────────────────────────────────
+# 5. 主入口
+# ──────────────────────────────────────────────
+async def main_async():
+    args = parse_args()
 
-                # **核心升级**: 将 NotFound 和 ResourceExhausted 视为同类永久性错误
-                except (google_exceptions.ResourceExhausted, google_exceptions.NotFound) as e:
-                    error_type = "配额耗尽" if isinstance(e, google_exceptions.ResourceExhausted) else "模型未找到"
-                    print(f"  ! {error_type}: <{task['key_name']}> - {task['model_name']}", file=sys.stderr)
-                    # 永久切换到下一个任务
-                    paper_start_task_index += 1
-                    # 更新全局任务索引
-                    current_task_index = paper_start_task_index
-                    # 跳出重试循环，让外层while循环决定下一步
-                    break 
+    # 读取 JSONL，去重 by id
+    with open(args.data, encoding="utf-8") as f:
+        seen = set()
+        data = []
+        for line in f:
+            if not line.strip(): continue
+            d = json.loads(line)
+            if d["id"] not in seen:
+                seen.add(d["id"])
+                data.append(d)
+    print(f"📑 待处理论文数: {len(data)}")
 
-                except Exception as e:
-                    print(f"  > 发生瞬时性错误: {e}", file=sys.stderr)
-                    if attempt < args.retries - 1:
-                        time.sleep(args.timeout)
-            
-            if final_result:
-                break
-        
-        if not final_result:
-            total_failures += 1
-            print(f"  处理 {d['id']} 失败。所有可用任务均已尝试失败。", file=sys.stderr)
-            error_message = "错误：AI分析失败。"
-            d['AI'] = {field: error_message for field in Structure.model_fields.keys()}
-        else:
-            d['AI'] = final_result
-            
-        enhanced_data.append(d)
-        # [核心改造] 使用可配置的延迟，确保不超过API频率限制
-        print(f"  ...等待 {api_call_interval} 秒...", file=sys.stderr)
-        time.sleep(api_call_interval)
+    tasks = [process_paper(p, args.retries, args.language) for p in data]
+    results: List[dict] = await asyncio.gather(*tasks, return_exceptions=False)
 
-    output_filename = args.data.replace('.jsonl', f'_AI_enhanced_{language}.jsonl')
-    with open(output_filename, "w", encoding="utf-8") as f:
-        for d_item in enhanced_data:
-            f.write(json.dumps(d_item, ensure_ascii=False) + "\n")
-
-    print(f"\n处理完成。成功处理: {len(enhanced_data) - total_failures}/{len(enhanced_data)}。输出文件: {output_filename}")
+    # 写文件
+    out_file = args.data.replace(".jsonl", f"_AI_enhanced_{args.language}.jsonl")
+    with open(out_file, "w", encoding="utf-8") as f:
+        for row in results:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    ok = sum(1 for r in results if r["AI"]["summary"] != "ERROR")
+    print(f"✅ 完成: {ok}/{len(results)} 输出 → {out_file}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main_async())

@@ -3095,15 +3095,12 @@
         if (startDateInput) startDateInput.value = '';
         if (endDateInput) endDateInput.value = '';
         
-        // 重新执行当前搜索或显示所有论文
+        // 如果在搜索模式，重新渲染结果。否则，重置默认视图。
         if (state.currentQuery) {
-            handleSearch();
+            renderFilteredResults();
         } else {
-            // 如果没有搜索词，重新加载当前月份
-            const currentMonthPapers = Array.from(state.allPapers.values())
-                .filter(p => p.id.startsWith(state.manifest.availableMonths[state.currentMonthIndex]?.replace('-', '').substring(2) || ''))
-                .sort((a, b) => b.date.localeCompare(a.date));
-            renderPapers(currentMonthPapers);
+            // 如果不在搜索模式，可以重置到默认视图
+            resetToDefaultView();
         }
         
         showToast('已清除日期筛选');
@@ -3127,33 +3124,14 @@
     }
 
     function filterPapersByDate() {
-        if (!currentDateFilter.startDate || !currentDateFilter.endDate) return;
-
-        const startDate = new Date(currentDateFilter.startDate);
-        const endDate = new Date(currentDateFilter.endDate);
-        endDate.setHours(23, 59, 59, 999); // 包含结束日期的全天
-
-        let filteredPapers;
-        
+        // 如果在搜索模式下，重新渲染搜索结果以应用日期筛选
         if (state.isSearchMode && state.currentSearchResults.length > 0) {
-            // 如果在搜索模式，筛选搜索结果
-            filteredPapers = state.currentSearchResults.filter(paper => {
-                const paperDate = new Date(paper.date);
-                return paperDate >= startDate && paperDate <= endDate;
-            });
-            
-            renderSearchResults(filteredPapers, state.currentQuery);
+            renderFilteredResults();
         } else {
-            // 筛选所有论文
-            filteredPapers = Array.from(state.allPapers.values()).filter(paper => {
-                const paperDate = new Date(paper.date);
-                return paperDate >= startDate && paperDate <= endDate;
-            }).sort((a, b) => b.date.localeCompare(a.date));
-            
-            renderPapers(filteredPapers);
+            // 如果不在搜索模式，则筛选当前视图中的论文
+            // (此功能当前主要为搜索结果设计，非搜索模式下可后续增强)
+            showToast('日期筛选主要用于搜索结果。', 'info');
         }
-
-        showToast(`找到 ${filteredPapers.length} 篇符合日期条件的论文`);
     }
 
     function formatDate(date) {
@@ -5371,10 +5349,13 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         let filtered = activeCategoryFilter === 'all'
             ? currentSearchResults
             : currentSearchResults.filter(paper => paper.categories && paper.categories.includes(activeCategoryFilter));
-
-        // 应用日期筛选
-        if (currentDateFilter && currentDateFilter.startDate && currentDateFilter.endDate) {
+        
+        // 应用日期筛选 (新增)
+        const originalCountBeforeDateFilter = filtered.length;
+        let dateFilterActive = false;
+        if (currentDateFilter.startDate && currentDateFilter.endDate) {
             filtered = applyDateFilterToResults(filtered);
+            dateFilterActive = true;
         }
 
         searchResultsContainer.innerHTML = '';
@@ -5390,8 +5371,12 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             infoText += `，其中 <strong>${filtered.length}</strong> 篇属于 <strong>${activeCategoryFilter}</strong> 分类`;
         }
         
-        if (currentDateFilter && currentDateFilter.startDate && currentDateFilter.endDate) {
-            infoText += ` (已应用日期筛选)`;
+        if (dateFilterActive) {
+            if (originalCountBeforeDateFilter !== filtered.length) {
+                 infoText += `，日期筛选后剩 <strong>${filtered.length}</strong> 篇`;
+            } else {
+                 infoText += ` (已应用日期筛选)`;
+            }
         }
         
         infoText += '：';
