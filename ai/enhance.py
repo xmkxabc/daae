@@ -126,7 +126,7 @@ async def process(paper, lang, retries):
                 if res and good(res):
                     paper["AI"] = res.model_dump()
                     return paper, last_combo
-            except RuntimeError:
+            except (RuntimeError, gexc.ResourceExhausted):
                 continue
     paper["AI"] = {f: "ERROR" for f in Structure.model_fields.keys()}
     return paper, last_combo
