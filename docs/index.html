@@ -516,14 +516,20 @@
             background-color: var(--bg-tertiary); 
             border-color: var(--text-tertiary); 
         }
+        
         .date-filter-btn.active { 
-            background-color: var(--accent-secondary); 
+            background-color: var(--accent-primary);
             color: white; 
-            border-color: var(--accent-secondary); 
+            border-color: var(--accent-primary);
         }
+        
         .date-filter-btn:focus {
             outline: 2px solid var(--accent-primary);
             outline-offset: 2px;
+        }
+        .date-filter-btn sup {
+            background-color: rgba(0, 0, 0, 0.15);
+            color: #fff;
         }
         
         /* 优化：顶部加载进度条样式 */
@@ -2345,7 +2351,11 @@
             <div id="date-filter-panel" class="hidden mt-3">
                 <div class="flex flex-wrap gap-2">
                     <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="today">今日</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="yesterday">昨天</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="dayBeforeYesterday">前天</button>
                     <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="week">本周</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent3">最近3天</button>
+                    <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent5">最近5天</button>
                     <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="month">本月</button>
                     <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="custom">自定义</button>
                 </div>
@@ -2361,6 +2371,15 @@
                     </span>
                 </div>
             </div>
+
+            <!-- 新增：日期筛选快捷按钮 -->
+            <div class="flex flex-wrap gap-2 mt-2">
+                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="today">今日</button>
+                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="yesterday">昨天</button>
+                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="dayBeforeYesterday">前天</button>
+                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent3">最近3天</button>
+                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent5">最近5天</button>
+            </div>
                    
             <!-- 新增：搜索建议下拉框 -->
             <div id="search-suggestions" class="search-suggestions">
@@ -2374,6 +2393,11 @@
         <div id="category-filters" class="flex items-center gap-2 overflow-x-auto pb-2"></div>
     </div>
     
+    <!-- 新增：每日论文分布筛选器 -->
+    <div id="daily-distribution-container" class="mb-4 hidden">
+        <div id="daily-distribution-filters" class="flex items-center gap-2 overflow-x-auto pb-2"></div>
+    </div>
+
     <main id="main-content">
         <div id="search-info" class="mb-4 text-lg text-gray-700 hidden"></div>
         <div id="papers-container"></div>
@@ -3075,6 +3099,38 @@
                 startDate = formatDate(monthStart);
                 endDate = formatDate(today);
                 displayText = '本月';
+                break;
+            case 'yesterday':
+                const yesterday = new Date(today);
+                yesterday.setDate(date - 1);
+                startDate = endDate = formatDate(yesterday);
+                displayText = '昨天';
+                break;
+            case 'dayBeforeYesterday':
+                const dayBeforeYesterday = new Date(today);
+                dayBeforeYesterday.setDate(date - 2);
+                startDate = endDate = formatDate(dayBeforeYesterday);
+                displayText = '前天';
+                break;
+            case 'recent3':
+                const recent3 = new Date(today);
+                recent3.setDate(date - 2);
+                startDate = formatDate(recent3);
+                endDate = formatDate(today);
+                displayText = '最近3天';
+                break;
+            case 'recent5':
+                const recent5 = new Date(today);
+                recent5.setDate(date - 4);
+                startDate = formatDate(recent5);
+                endDate = formatDate(today);
+                displayText = '最近5天';
+                break;
+            default:
+                // 如果 period 不匹配任何已知值，则不进行任何筛选
+                currentDateFilter = { startDate: null, endDate: null, period: null };
+                updateDateFilterDisplay('');
+                dateFilterPanel.classList.add('hidden');
                 break;
         }
 
@@ -4872,13 +4928,74 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         }
     }
 
-    function renderDateFilter(month, papers, container) {
-        const activeDay = state.activeDateFilters.get(month) || 'all';
-        const daysWithPapers = [...new Set(papers.map(p => p.date.split('-')[2]))].sort((a, b) => b - a);
+    function renderDailyDistributionFilters(papers) {
+        const container = document.getElementById('daily-distribution-container');
+        const filtersEl = document.getElementById('daily-distribution-filters');
+        if (!container || !filtersEl) return;
 
-        let buttonsHTML = `<button class="date-filter-btn ${activeDay === 'all' ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="all">全部日期</button>`;
-        daysWithPapers.forEach(day => {
-            buttonsHTML += `<button class="date-filter-btn ${activeDay == day ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="${day}">${day}日</button>`;
+        if (papers.length === 0) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        const dateCounts = papers.reduce((acc, paper) => {
+            if (paper.date) {
+                acc[paper.date] = (acc[paper.date] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        const sortedDates = Object.keys(dateCounts).sort((a, b) => new Date(b) - new Date(a));
+
+        if (sortedDates.length <= 1) { // 如果只有一天的数据，则不显示筛选器
+            container.classList.add('hidden');
+            return;
+        }
+        
+        const activeDate = (currentDateFilter.startDate === currentDateFilter.endDate) ? currentDateFilter.startDate : 'all';
+
+        let buttonsHTML = `<button class="date-filter-btn flex-shrink-0 ${activeDate === 'all' ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="all">全部日期 <sup>${papers.length}</sup></button>`;
+
+        sortedDates.forEach(date => {
+            const count = dateCounts[date];
+            const dateObj = new Date(date);
+            const displayDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
+            buttonsHTML += `<button class="date-filter-btn flex-shrink-0 ${activeDate === date ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="${date}">${displayDate} <sup>${count}</sup></button>`;
+        });
+
+        filtersEl.innerHTML = buttonsHTML;
+        container.classList.remove('hidden');
+    }
+
+    function renderDateFilter(month, papers, container) {
+        // The active filter for a month can be 'all' or a full date like '2025-06-15'
+        const activeDateFilter = state.activeDateFilters.get(month) || 'all';
+
+        // Group papers by full date and get counts
+        const dateCounts = papers.reduce((acc, paper) => {
+            if (paper.date) {
+                acc[paper.date] = (acc[paper.date] || 0) + 1;
+            }
+            return acc;
+        }, {});
+
+        // Get unique dates and sort them in descending order
+        const sortedDates = Object.keys(dateCounts).sort((a, b) => b.localeCompare(a));
+        
+        // "All" button with total count
+        let buttonsHTML = `<button class="date-filter-btn ${activeDateFilter === 'all' ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="all">全部 <sup>${papers.length}</sup></button>`;
+
+        // Buttons for each day
+        sortedDates.forEach(fullDate => {
+            const dayOfMonth = parseInt(fullDate.split('-')[2], 10); // Display '15' instead of '15日'
+            const count = dateCounts[fullDate];
+            const isActive = activeDateFilter === fullDate;
+            
+            buttonsHTML += `
+                <button class="date-filter-btn ${isActive ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-full-date="${fullDate}">
+                    ${dayOfMonth}日 <sup>${count}</sup>
+                </button>
+            `;
         });
         container.innerHTML = buttonsHTML;
     }
@@ -5091,11 +5208,14 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
             <div class="compact-hidden">
                 ${createInfoBox('Comment',paper.comment,'yellow')}
                 ${createInfoBox('TL;DR',paper.tldr,'green')}
-                ${createInfoBox('AI点评',paper.comments,'indigo')}
+                ${ paper.ai_comments
+                    ? createInfoBox('AI点评', paper.ai_comments, 'indigo')
+                    : `<div class="info-box info-box-indigo"><p class="info-box-title">AI点评:</p><p class="italic text-sm text-gray-500 dark:text-gray-400">暂无AI点评</p></div>`
+                }
             </div>
             <div id="ai-details-${paper.id}" class="details-section ai-details-section compact-hidden">
-                <h2 class="text-2xl font-bold mb-4 ai-analysis-title">AI分析与摘要</h2>
-                ${paper.motivation?`<h3>研究动机</h3><p>${paper.motivation}</p><br/>`:''}
+                 <h2 class="text-2xl font-bold mb-4 ai-analysis-title">AI分析与摘要</h2>
+                ${paper.motivation ? `<h3>研究动机</h3><p>${paper.motivation}</p><br/>` : ''}
                 ${paper.method?`<h3>研究方法</h3><p>${paper.method}</p><br/>`:''}
                 ${paper.results?`<h3>研究结果</h3><p>${paper.results}</p><br/>`:''}
                 ${paper.conclusion?`<h3>研究结论</h3><p>${paper.conclusion}</p><br/>`:''}
@@ -5352,6 +5472,9 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 
                 state.currentSearchResults = results;
                 renderCategoryFiltersForSearch(results);
+                // 新增：渲染每日分布筛选器
+                renderDailyDistributionFilters(results);
+                
                 renderFilteredResults();
             });
         } finally {
@@ -5427,6 +5550,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         searchInfoEl.classList.add('hidden');
         categoryFilterContainer.classList.remove('hidden'); // 确保分类栏可见
         setupCategoryFilters(); // 恢复默认的分类按钮
+        document.getElementById('daily-distribution-container')?.classList.add('hidden');
         state.currentSearchResults = [];
         state.activeCategoryFilter = 'all';
 
@@ -5558,6 +5682,8 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                         .filter(p => p.id.startsWith(month.replace('-', '').substring(2)))
                         .sort((a,b)=>b.date.localeCompare(a.date));
                     updateMonthView(month, papersForMonth);
+                    // 更新日期按钮的激活状态
+                    renderDateButtons(month);
                     break;
             }
         });
@@ -5589,6 +5715,27 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 performTagSearch(tagValue);
             }
         });
+
+        // 新增：每日分布筛选器事件
+        const dailyDistContainer = document.getElementById('daily-distribution-container');
+        if (dailyDistContainer) {
+            dailyDistContainer.addEventListener('click', (event) => {
+                const target = event.target.closest('[data-action="filter-by-distribution-date"]');
+                if (!target || state.isFetching) return;
+
+                const date = target.dataset.date;
+
+                if (date === 'all') {
+                    currentDateFilter = { startDate: null, endDate: null, period: null };
+                    updateDateFilterDisplay('');
+                } else {
+                    currentDateFilter = { startDate: date, endDate: date, period: 'custom' };
+                    updateDateFilterDisplay(`${new Date(date).getMonth() + 1}/${new Date(date).getDate()}`);
+                }
+                renderDailyDistributionFilters(state.currentSearchResults);
+                renderFilteredResults();
+            });
+        }
 
         // 主题切换
         themeToggle.addEventListener('click', toggleTheme);
@@ -5720,6 +5867,17 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 }
                 lastTouchEnd = now;
             }, false);
+        }
+
+        // 日期筛选快捷操作 (新增)
+        function handleDateFilterClick(month, day) {  
+          if (day === 'all') {  
+              state.activeDateFilters.delete(month);  
+          } else {  
+              state.activeDateFilters.set(month, day);  
+          }
+          const papersInMonth = Array.from(state.allPapers.values()).filter(p => p.id.startsWith(month.replace('-', '').substring(2)));
+          updateMonthView(month, papersInMonth.sort((a, b) => b.date.localeCompare(a.date))); // 对数据进行排序
         }
         
         // 个性化功能事件监听器
