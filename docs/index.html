@@ -4912,13 +4912,13 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         const papersListWrapper = document.getElementById(`papers-list-wrapper-${month}`);
         if (!dateFilterWrapper || !papersListWrapper) return;
 
-        const activeDay = state.activeDateFilters.get(month) || 'all';
+    const activeFilter = state.activeDateFilters.get(month) || 'all';
 
         renderDateFilter(month, allPapersForMonth, dateFilterWrapper);
 
-        const filteredPapers = (activeDay === 'all')
+    const filteredPapers = (activeFilter === 'all')
             ? allPapersForMonth
-            : allPapersForMonth.filter(p => p.date && p.date.endsWith(`-${String(activeDay).padStart(2, '0')}`));
+        : allPapersForMonth.filter(p => p.date === activeFilter);
 
         papersListWrapper.innerHTML = '';
         if (filteredPapers.length > 0) {
@@ -5661,7 +5661,7 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         mainContainer.addEventListener('click', (event) => {
             const target = event.target.closest('[data-action]');
             if (!target || state.isFetching) return;
-            const { action, paperId, tagValue, month, day, tag, rating } = target.dataset;
+            const { action, paperId, tagValue, month, day, tag, rating, fullDate } = target.dataset;
 
             switch (action) {
                 case 'toggle-ai-details': toggleAIDetails(paperId); break;
@@ -5677,13 +5677,12 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 case 'remove-tag': removePaperTag(paperId, tag); break;
                 case 'rate-paper': setPaperRating(paperId, parseInt(rating)); break;
                 case 'filter-by-date':
-                    state.activeDateFilters.set(month, day);
+                    const filterValue = fullDate || day;
+                    state.activeDateFilters.set(month, filterValue);
                     const papersForMonth = Array.from(state.allPapers.values())
                         .filter(p => p.id.startsWith(month.replace('-', '').substring(2)))
                         .sort((a,b)=>b.date.localeCompare(a.date));
                     updateMonthView(month, papersForMonth);
-                    // 更新日期按钮的激活状态
-                    renderDateButtons(month);
                     break;
             }
         });
