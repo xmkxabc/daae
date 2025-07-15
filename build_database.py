@@ -93,7 +93,8 @@ def build_database_from_jsonl():
                         "comment": raw_data.get("comments", ""), # 修正：爬虫中的字段是 'comments'
                         "categories": raw_data.get("categories", []),
                         "updated": raw_data.get("updated", file_date),
-                        
+                        "first_published": raw_data.get("date", file_date), # 第一次发布日期
+
                         "zh_title": ai_enhanced_info.get("title_translation"),
                         "translation": ai_enhanced_info.get("translation"),
                         "keywords": keywords_list,
