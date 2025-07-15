@@ -4972,15 +4972,17 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         const activeDateFilter = state.activeDateFilters.get(month) || 'all';
 
         // Group papers by full date and get counts
+        // FIX: Only count papers whose date property actually falls within the specified month.
+        // This prevents dates from other months (due to potential data errors) from polluting the filter buttons.
         const dateCounts = papers.reduce((acc, paper) => {
-            if (paper.date) {
+            if (paper.date && paper.date.startsWith(month)) {
                 acc[paper.date] = (acc[paper.date] || 0) + 1;
             }
             return acc;
         }, {});
 
         // Get unique dates and sort them in descending order
-        const sortedDates = Object.keys(dateCounts).sort((a, b) => b.localeCompare(a));
+        const sortedDates = Object.keys(dateCounts).sort((a, b) => new Date(b) - new Date(a));
         
         // "All" button with total count
         let buttonsHTML = `<button class="date-filter-btn ${activeDateFilter === 'all' ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="all">全部 <sup>${papers.length}</sup></button>`;
