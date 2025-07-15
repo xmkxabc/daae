@@ -2178,13 +2178,13 @@
                 </svg>
             </button>
         </div>
-        <p id="last-updated" class="text-sm text-gray-500 mt-2"></p> 
+        <p id="last-updated" class="text-sm text-gray-500 mt-2"></p>
         
         <!-- 帮助按钮 -->
         <div class="flex justify-center items-center gap-4 mt-4">
             <button id="help-btn" class="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition" title="查看使用帮助">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span class="text-sm font-medium">使用帮助</span>
             </button>
@@ -2196,8 +2196,8 @@
             </button>
             <button id="settings-btn" class="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition" title="个人设置">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 <span class="text-sm font-medium">个人设置</span>
             </button>
@@ -5153,13 +5153,15 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         const absUrl = paper.id ? `https://arxiv.org/abs/${paper.id}` : '#';
         const pdfUrl = paper.id ? `https://arxiv.org/pdf/${paper.id}` : '#';
         const isFavorited = state.favorites.has(paper.id);
-        
-        const createInfoBox = (title, content, color) => {
+
+        const createInfoBox = (title, content, color, forceItalic = false) => {
             if (!content) return '';
             const isTldr = title === 'TL;DR';
+            const isAiComment = title === 'AI点评';
+
             const titleClass = isTldr ? 'italic' : '';
             let contentClasses = [''];
-            if (isTldr) {
+            if (isTldr || isAiComment || forceItalic) {
                 contentClasses.push('italic', 'text-sm');
             }
             return `<div class="info-box info-box-${color}"><p class="info-box-title ${titleClass}">${title}:</p><p class="${contentClasses.join(' ')}">${content}</p></div>`;
@@ -5224,15 +5226,15 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
                 }
             </div>
             <div id="ai-details-${paper.id}" class="details-section ai-details-section compact-hidden">
-                 <h2 class="text-2xl font-bold mb-4 ai-analysis-title">AI分析与摘要</h2>
-                ${paper.motivation ? `<h3>研究动机</h3><p>${paper.motivation}</p><br/>` : ''}
-                ${paper.method?`<h3>研究方法</h3><p>${paper.method}</p><br/>`:''}
-                ${paper.results?`<h3>研究结果</h3><p>${paper.results}</p><br/>`:''}
-                ${paper.conclusion?`<h3>研究结论</h3><p>${paper.conclusion}</p><br/>`:''}
-                <h3>摘要翻译</h3><p class="italic text-sm">${paper.translation||'无'}</p><br/>
-                <h3>原文摘要</h3><p class="italic text-sm">${paper.abstract||'无'}</p>
+                 <h2 class="text-xl font-bold mb-4 ai-analysis-title">AI分析与摘要</h2>
+                ${paper.motivation ? `<h3>研究动机</h3><p class="text-sm">${paper.motivation}</p><br/>` : ''}
+                ${paper.method?`<h3>研究方法</h3><p class="text-sm">${paper.method}</p><br/>`:''}
+                ${paper.results?`<h3>研究结果</h3><p class="text-sm">${paper.results}</p><br/>`:''}
+                ${paper.conclusion?`<h3>研究结论</h3><p class="text-sm">${paper.conclusion}</p><br/>`:''}
+                <h3>摘要翻译</h3><p class="text-sm italic">${paper.translation||'无'}</p><br/>
+                <h3>原文摘要</h3><p class="text-sm italic">${paper.abstract||'无'}</p>
             </div>
-            <div class="flex items-center space-x-4 mt-4">
+            <div class="flex items-center space-x-4 mt-4 text-sm">
                 <a href="${absUrl}" target="_blank" class="paper-link-abstract font-semibold">摘要页</a>
                 <a href="${pdfUrl}" target="_blank" class="paper-link-pdf font-semibold">PDF</a>
                 <a href="https://www.alphaxiv.org/overview/${paper.id}" target="_blank" class="paper-link-alphaxiv font-semibold">AlphaXiv</a>
