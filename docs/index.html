@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI论文每日速览 | Daily Arxiv AI Enhancer</title>
+    <!-- Umami Analytics -->
+    <script async src="https://analytics.umami.is/script.js"
+        data-website-id="ba121631-f1a1-46ba-ba9a-1deb2e94e456"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -4921,6 +4924,8 @@ ${paper.zh_abstract ? `**中文摘要**: ${paper.zh_abstract}` : ''}
         : allPapersForMonth.filter(p => p.date === activeFilter);
 
         papersListWrapper.innerHTML = '';
+        // 确保在渲染前按日期降序排序，以解决筛选后顺序不正确的问题
+        filteredPapers.sort((a, b) => b.date.localeCompare(a.date));
         if (filteredPapers.length > 0) {
             renderInChunks(filteredPapers, papersListWrapper);
         } else {
