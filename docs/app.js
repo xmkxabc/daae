@@ -799,6 +799,15 @@ function showSearchSuggestions(query) {
 
     const allSuggestions = [...historyMatches, ...filtered];
 
+    // 新增：如果输入内容符合ID格式，在最顶端添加一个ID搜索建议
+    if (/^\d{4}\.\d{4,5}$/.test(query)) {
+        allSuggestions.unshift({
+            text: query,
+            type: '论文ID',
+            category: 'paper_id' // 使用一个特殊的类型
+        });
+    }
+
     if (allSuggestions.length === 0) {
         hideSearchSuggestions();
         return;
@@ -1355,6 +1364,10 @@ async function init() {
         }
     } catch (error) {
         console.error("Initialization failed:", error);
+        // 如果初始化失败，显示重试按钮
+        papersContainer.innerHTML = `<div class="text-center py-12"><p class="text-red-500 mb-4">初始化失败，请检查网络或尝试刷新。</p><button onclick="location.reload()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">重新加载</button></div>`;
+
+
         console.error("Error details:", error.message);
         console.error("Error stack:", error.stack);
 
@@ -1404,6 +1417,7 @@ function setupUI() {
     setupDateFilter(); // 添加日期筛选初始化
     initializeMobileFeatures(); // 新增移动端功能初始化
     if (state.manifest.lastUpdated) lastUpdatedEl.textContent = `数据更新于: ${state.manifest.lastUpdated}`;
+    initPaperIdSearch(); // 初始化论文 ID 搜索
     document.getElementById('favorites-count').textContent = state.favorites.size;
     updateMobileFavoritesCount(); // 更新移动端收藏计数
 }
@@ -3713,11 +3727,25 @@ async function navigateToMonth(month) {
     showProgress('准备导航...');
 
     try {
+        // 在开始加载前，显示骨架屏
+        papersContainer.innerHTML = '';
+        papersContainer.classList.add('skeleton-view');
+        const numSkeletons = Math.floor(Math.random() * 3) + 3; // 3-5 个骨架屏
+        for (let i = 0; i < numSkeletons; i++) {
+            const skeleton = document.createElement('div');
+            skeleton.className = 'skeleton-card skeleton-animate';
+            skeleton.innerHTML = `
+                <div class="skeleton h-4 w-3/4 mb-2"></div>
+                <div class="skeleton h-4 w-1/2 mb-2"></div>
+                <div class="skeleton h-4 w-full mb-2"></div>
+            `;
+            papersContainer.appendChild(skeleton);
+        }
+
         if (state.isSearchMode) {
             console.log('Resetting search mode...');
             resetToDefaultView(false); // 仅重置UI，不重载数据以保留缓存
         }
-
         console.log(`Available months: ${JSON.stringify(state.manifest.availableMonths)}`);
         const targetIndex = state.manifest.availableMonths.indexOf(month);
         console.log(`Target index for ${month}: ${targetIndex}`);
@@ -3735,7 +3763,7 @@ async function navigateToMonth(month) {
 
         console.log('Starting fetchWithProgress...');
         await fetchWithProgress([month]);
-        console.log('fetchWithProgress completed');
+        console.log('fetchWithProgress complete');
 
         console.log('Starting UI updates...');
         updateProgress('渲染论文...', 95);
@@ -3757,7 +3785,8 @@ async function navigateToMonth(month) {
         console.log(`Found ${papersInMonth.length} papers for month ${month}`);
 
         console.log('Calling renderPapers...');
-        renderPapers(papersInMonth.sort((a, b) => b.date.localeCompare(a.date)), month);
+        papersContainer.classList.remove('skeleton-view'); // 在渲染前移除骨架屏样式
+        renderPapers(papersInMonth.sort((a, b) => b.date.localeCompare(a.date)), month); // 正确传递排序后的数据
         console.log('renderPapers completed');
 
         // 正确设置当前月份索引，为无限滚动做准备
@@ -3822,6 +3851,32 @@ async function handleSearch() {
 
     try {
         const query = searchInput.value.trim();
+
+        // 新增：检查查询是否为论文ID
+        if (/^\d{4}\.\d{4,5}$/.test(query)) {
+            const paperId = query;
+            addToSearchHistory(paperId);
+
+            // 检查论文卡片是否已在当前页面渲染
+            const paperCard = document.getElementById(`card-${paperId}`);
+            if (paperCard) {
+                // 如果已渲染，则滚动到该位置并高亮显示
+                paperCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                paperCard.classList.add('highlight-shared-paper');
+                setTimeout(() => {
+                    paperCard.classList.remove('highlight-shared-paper');
+                }, 3000); // 高亮3秒
+                showToast(`已在当前页面定位到论文: ${paperId}`);
+                // 找到后直接返回，不执行后续的全文搜索
+                return;
+            }
+
+            // 如果未渲染，则使用 handleDirectLink 功能加载并跳转
+            // 这将导航到正确的月份并高亮显示论文
+            showToast(`正在查找并跳转到论文 ${paperId}...`, 'info');
+            await handleDirectLink(paperId);
+            return; // 操作完成后返回
+        }
 
         if (query !== state.currentQuery) {
             showProgress(`正在搜索 "${query}"...`);
@@ -3911,7 +3966,10 @@ async function handleSearch() {
         });
     } finally {
         state.isFetching = false;
-        hideProgress();
+        // 只有在不是ID搜索导航的情况下才隐藏进度条，因为handleDirectLink会自己处理
+        if (!/^\d{4}\.\d{4,5}$/.test(searchInput.value.trim())) {
+            hideProgress();
+        }
     }
 }
 

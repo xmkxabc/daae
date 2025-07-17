@@ -185,12 +185,27 @@
             border-radius: 3px;
         }
 
-        /* 优化：为直接链接的论文添加高亮效果 */
+        /* 新增：为高亮效果定义动画 */
+        @keyframes pulse-glow {
+            0% {
+                box-shadow: 0 0 0 2px var(--accent-primary);
+            }
+            50% {
+                box-shadow: 0 0 0 5px var(--accent-secondary), 0 0 15px var(--accent-secondary);
+                opacity: 1; /* 动画中间态不透明 */
+            }
+            80% { /* 在动画结束前80%时开始淡出 */
+                box-shadow: 0 0 0 2px var(--accent-primary);
+                opacity: 1;
+            }
+            100% { /* 动画结束时完全透明 */
+                box-shadow: 0 0 0 2px var(--accent-primary); /* 保留阴影 */
+                opacity: 0; /* 动画结束时完全透明 */
+            }
+        }
         .highlight-shared-paper {
-            background-color: var(--bg-tertiary);
-            border-color: var(--accent-primary);
-            box-shadow: 0 0 0 2px var(--accent-primary);
-            /* 修改：与主色调保持一致 */
+            animation: pulse-glow 1.5s ease-in-out 2 forwards; /* 使用 forwards 保持最终状态 */
+            transition: box-shadow 0.3s ease-out, border-color 0.3s ease-out, opacity 0.3s ease-out;
         }
 
         /* 新增：深色模式切换按钮 */

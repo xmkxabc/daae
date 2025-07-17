@@ -738,6 +738,54 @@
     </div>
 </div>
 
+<!-- 新增：论文卡片模板 -->
+<template id="paper-card-template">
+    <article class="paper-card" tabindex="0" role="article">
+        <!-- 这里放置 createDetailedPaperContent 函数中生成的完整HTML结构 -->
+        <!-- 以下为简化示例 -->
+        <div class="paper-header flex justify-between items-start">
+            <p class="paper-meta text-sm text-gray-500 mb-2"></p>
+            <div class="paper-actions flex items-center space-x-2">
+                 <button data-action="toggle-favorite" title="收藏/取消收藏" class="favorite-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                </button>
+            </div>
+        </div>
+        <h2 class="paper-title text-xl md:text-2xl font-bold mb-2"></h2>
+        <h3 class="paper-title-zh text-base font-semibold mb-3 italic"></h3>
+        <div class="paper-authors text-sm text-gray-600 mb-3 compact-hidden"></div>
+        <div class="paper-content">
+            <!-- 详细内容将在这里填充 -->
+        </div>
+        <div class="paper-footer flex items-center space-x-4 mt-4 text-sm">
+            <a href="#" target="_blank" class="paper-link-abstract font-semibold">摘要页</a>
+            <a href="#" target="_blank" class="paper-link-pdf font-semibold">PDF</a>
+            <a href="#" target="_blank" class="paper-link-alphaxiv font-semibold">AlphaXiv</a>
+            <button data-action="toggle-ai-details" class="ml-auto ai-toggle-btn font-bold py-2 px-4 rounded-lg transition compact-hidden">AI分析</button>
+        </div>
+    </article>
+</template>
+
+<!-- 新增：命令面板 -->
+<div id="command-palette-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-start justify-center pt-20">
+    <div id="command-palette" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-xl mx-4 transform transition-all">
+        <div class="p-3 border-b border-gray-200 dark:border-gray-700">
+            <input type="text" id="command-input" placeholder="输入命令..." class="w-full bg-transparent p-2 text-lg text-gray-900 dark:text-white focus:outline-none">
+        </div>
+        <ul id="command-list" class="max-h-80 overflow-y-auto">
+            <!-- 命令将动态填充在这里 -->
+        </ul>
+        <div class="p-2 bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400">
+            <span>使用 
+                <kbd class="font-sans bg-gray-200 dark:bg-gray-700 rounded-md px-1.5 py-0.5">↑</kbd> 
+                <kbd class="font-sans bg-gray-200 dark:bg-gray-700 rounded-md px-1.5 py-0.5">↓</kbd> 
+                选择, 
+                <kbd class="font-sans bg-gray-200 dark:bg-gray-700 rounded-md px-1.5 py-0.5">Enter</kbd> 
+                执行</span>
+        </div>
+    </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
