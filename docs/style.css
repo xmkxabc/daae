@@ -2408,3 +2408,26 @@
             opacity: 1;
             transform: scale(1);
         }
+        .back-to-home-button {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 9999px; /* 胶囊形状 */
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid var(--border-primary);
+        }
+        
+        .back-to-home-button:hover {
+            background-color: var(--accent-primary);
+            color: white;
+            border-color: var(--accent-primary);
+        }
+        
+        .back-to-home-button {
+            /* ... 其他样式 ... */
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+        }
+        

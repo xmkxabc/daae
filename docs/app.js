@@ -4018,10 +4018,23 @@ function renderFilteredResults() {
     } else {
         searchResultsContainer.innerHTML = `<p class="text-center text-gray-500">在此分类下未找到相关论文。</p>`;
     }
-
     document.querySelectorAll('.category-filter-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.category === activeCategoryFilter);
     });
+    // 在搜索结果列表前添加返回按钮
+    if (!document.getElementById('back-to-home-btn')) {
+        createBackToHomeButton();
+    }
+}
+function createBackToHomeButton() {
+    const backToHomeBtn = document.createElement('button');
+    backToHomeBtn.textContent = '回到首页'; // 修改文案
+    backToHomeBtn.id = 'back-to-home-btn';
+    backToHomeBtn.className = 'back-to-home-button'; // 使用新的 CSS 类
+    backToHomeBtn.addEventListener('click', () => {
+        resetToDefaultView();
+    });
+    searchResultsContainer.parentNode.insertBefore(backToHomeBtn, searchResultsContainer);
 }
 
 function resetToDefaultView(reload = true) {
@@ -4171,7 +4184,7 @@ function setupGlobalEventListeners() {
                 state.activeDateFilters.set(month, filterValue);
                 const papersForMonth = Array.from(state.allPapers.values())
                     .filter(p => p.id.startsWith(month.replace('-', '').substring(2)))
-                    .sort((a, b) => b.date.localeCompare(a.date));
+                    .sort((a, b) => b.date.localeCompare(a.date)); // 对数据进行排序
                 updateMonthView(month, papersForMonth);
                 break;
         }
