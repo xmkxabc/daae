@@ -136,6 +136,11 @@ const categoryFiltersEl = document.getElementById('category-filters');
 const progressContainer = document.getElementById('progress-container');
 const topLoaderBar = document.getElementById('top-loader-bar');
 const progressText = document.getElementById('progress-text');
+// 新增：错误处理元素
+const errorContainer = document.getElementById('error-container');
+const errorMessageSpan = document.getElementById('error-message');
+const retryLoadBtn = document.getElementById('retry-load-btn');
+
 // DOM 元素引用
 const themeToggle = document.getElementById('theme-toggle');
 const themeIconLight = document.getElementById('theme-icon-light');
@@ -1278,6 +1283,7 @@ async function init() {
     console.log('开始初始化...');
     showProgress('正在初始化...');
     try {
+        hideLoadError();
         console.log('加载基础设置...');
         // 基础设置加载 - 使用 try-catch 包装每个函数调用
         try { loadFavorites(); } catch (e) { console.warn('loadFavorites error:', e); }
@@ -1364,23 +1370,18 @@ async function init() {
         }
     } catch (error) {
         console.error("Initialization failed:", error);
-        // 如果初始化失败，显示重试按钮
-        papersContainer.innerHTML = `<div class="text-center py-12"><p class="text-red-500 mb-4">初始化失败，请检查网络或尝试刷新。</p><button onclick="location.reload()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition">重新加载</button></div>`;
-
-
-        console.error("Error details:", error.message);
-        console.error("Error stack:", error.stack);
 
         let errorMessage = '加载数据失败。';
         if (error.message.includes('fetch')) {
-            errorMessage += '请确保您在项目的 "docs" 目录下启动了本地服务器。';
+            errorMessage += '请检查您的网络连接。';
+        } else if (error.message.includes('Web Worker超时')) {
+            errorMessage += `错误详情：${error.message}。这通常是由于网络连接较慢或数据文件过大导致。`;
         } else if (error.name === 'ReferenceError') {
-            errorMessage += '代码中存在未定义的函数或变量。';
+            errorMessage += `代码中可能存在错误: ${error.message}`;
         } else {
             errorMessage += `错误信息：${error.message}`;
         }
-
-        papersContainer.innerHTML = `<p class="text-center text-red-500">${errorMessage}</p>`;
+        showLoadError(errorMessage);
     } finally {
         hideProgress();
         
@@ -4135,6 +4136,27 @@ function showToast(message, type = 'success', duration = 3000) {
     }, duration);
 }
 
+// 新增：更健壮的错误显示功能
+function showLoadError(message) {
+    if (errorContainer && errorMessageSpan) {
+        // 隐藏骨架屏和内容区
+        if (skeletonContainer) skeletonContainer.classList.add('hidden');
+        if (papersContainer) papersContainer.innerHTML = '';
+        if (searchResultsContainer) searchResultsContainer.classList.add('hidden');
+
+        errorMessageSpan.textContent = ` ${message}`;
+        errorContainer.classList.remove('hidden');
+    } else {
+        // 如果专用错误容器不存在，则使用后备方案
+        console.error("错误提示容器未在DOM中找到。");
+        if (papersContainer) papersContainer.innerHTML = `<p class="text-center text-red-500 p-8">加载失败: ${message}</p>`;
+    }
+    hideProgress(); // 隐藏顶部的加载条
+}
+
+function hideLoadError() {
+    if (errorContainer) errorContainer.classList.add('hidden');
+}
 // 新增：集中管理清除按钮的可见性
 function updateClearButtonVisibility() {
     const clearBtn = document.getElementById('clear-search-btn');
@@ -4151,6 +4173,14 @@ function showFavorites() {
 }
 
 function setupGlobalEventListeners() {
+    // 新增：错误重试按钮
+    if (retryLoadBtn) {
+        retryLoadBtn.addEventListener('click', () => {
+            showToast('正在尝试重新加载...', 'info');
+            // 使用 location.reload() 是处理致命初始化错误后最简单和最稳健的重试方法。
+            setTimeout(() => location.reload(), 500);
+        });
+    }
     // 新增：清除搜索按钮事件
     const clearSearchBtn = document.getElementById('clear-search-btn');
     if (clearSearchBtn) {
