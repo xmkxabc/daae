@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI论文每日速览 | Daily Arxiv AI Enhancer</title>
+    <title>洞见Arxiv | InsightArxiv</title>
     <!-- Umami Analytics -->
     <script async src="https://analytics.umami.is/script.js"
         data-website-id="ba121631-f1a1-46ba-ba9a-1deb2e94e456"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/@fontsource/inter@latest/index.css" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <style>
+        details[open] > summary svg {
+            transform: rotate(180deg);
+        }
+    </style>
     
 </head>
 <body class="text-gray-800" data-theme="light">
@@ -30,7 +35,7 @@
     <header class="text-center mb-4">
         <div class="flex justify-between items-center mb-4">
             <div></div>
-            <h1 class="text-4xl font-bold text-gray-900">AI论文每日速览</h1>
+            <h1 class="text-4xl font-bold text-gray-900">Arxiv论文每日速览</h1>
             <button id="theme-toggle" class="theme-toggle" aria-label="切换主题模式" title="切换深色/浅色模式">
                 <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
@@ -234,20 +239,24 @@
                 </div>
             </div>
 
-            <!-- 新增：日期筛选快捷按钮 -->
-            <div class="flex flex-wrap gap-2 mt-2">
-                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="today">今日</button>
-                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="yesterday">昨天</button>
-                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="dayBeforeYesterday">前天</button>
-                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent3">最近3天</button>
-                <button class="date-quick-filter px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-sm hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors" data-period="recent5">最近5天</button>
-            </div>
-                   
             <!-- 新增：搜索建议下拉框 -->
             <div id="search-suggestions" class="search-suggestions">
                 <!-- 动态填充搜索建议 -->
             </div>
         </div>
+    </div>
+
+    <!-- 新增：支持的分类列表 -->
+    <div class="my-6">
+        <details id="supported-categories-container" class="category-details bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 shadow-sm">
+            <summary class="category-summary text-base font-semibold text-gray-800 dark:text-gray-200 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex justify-between items-center">
+                <span>查看所有支持的论文分类</span>
+                <svg class="w-5 h-5 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </summary>
+            <div id="supported-categories-list" class="mt-4 flex flex-wrap gap-2">
+                <!-- Categories will be injected here by JavaScript -->
+            </div>
+        </details>
     </div>
 
     <!-- 新增：分类筛选器容器 -->

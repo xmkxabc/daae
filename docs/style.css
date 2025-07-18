@@ -10,11 +10,13 @@
             --border-secondary: #d1d5db;
             --accent-primary: #3b82f6;
             --accent-secondary: #5ac8fa;
-            /* 更接近苹果的浅蓝色 */
-            --shadow-light: rgba(0, 0, 0, 0.1);
-            --shadow-dark: rgba(0, 0, 0, 0.2);
             --highlight-bg: #fef9c3;
             --highlight-text: #713f12;
+            /* 建议 2：统一的阴影系统 */
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
         }
 
         [data-theme="dark"] {
@@ -28,11 +30,13 @@
             --border-secondary: #475569;
             --accent-primary: #60a5fa;
             --accent-secondary: #3b82f6;
-            --shadow-light: rgba(0, 0, 0, 0.3);
-            /* 更柔和的深色阴影 */
-            --shadow-dark: rgba(0, 0, 0, 0.5);
             --highlight-bg: #422006;
             --highlight-text: #fbbf24;
+            /* 建议 2：统一的阴影系统 (Dark) */
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
         }
 
         /* 新增：为平滑滚动提供基础 */
@@ -56,8 +60,7 @@
 
         .paper-card:hover {
             transform: translateY(-3px);
-            box-shadow: 0 4px 14px 0px var(--shadow-light);
-            /* 调整：更轻微的阴影 */
+            box-shadow: var(--shadow-md);
         }
 
         .loader {
@@ -623,11 +626,12 @@
 
         /* 新增：分类筛选器样式 */
         .category-filter-btn {
-            padding: 0.5rem 1rem;
+            padding: 0.25rem 0.75rem; /* 减小内边距 */
             border: 1px solid var(--border-secondary);
             border-radius: 9999px;
-            font-size: 0.875rem;
+            font-size: 0.75rem; /* 减小字体 */
             font-weight: 500;
+            line-height: 1.5; /* 增加行高以确保垂直居中 */
             color: var(--text-secondary);
             cursor: pointer;
             transition: all 0.2s ease;
@@ -676,15 +680,18 @@
         }
 
         .date-filter-btn {
-            padding: 0.375rem 0.75rem;
+            padding: 0.25rem 0.625rem; /* 减小内边距 */
             border: 1px solid var(--border-secondary);
             border-radius: 0.375rem;
-            font-size: 0.875rem;
+            font-size: 0.75rem; /* 减小字体 */
             font-weight: 500;
             color: var(--text-secondary);
             cursor: pointer;
-            transition: all 0.2s ease;
             background-color: var(--bg-secondary);
+            /* 优化：合并样式，使用flex进行精准对齐，并优化过渡效果 */
+            display: inline-flex;
+            align-items: baseline;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
 
         .date-filter-btn:hover {
@@ -703,11 +710,28 @@
             outline-offset: 2px;
         }
 
-        .date-filter-btn sup {
-            background-color: rgba(0, 0, 0, 0.15);
-            color: #fff;
+        .date-filter-btn .filter-count {
+            font-size: 0.625rem; /* 10px, 更小的字号 */
+            font-weight: 600;
+            color: var(--text-secondary); /* 增强对比度，提升可读性 */
+            background-color: var(--bg-tertiary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            margin-left: 0.25rem;
+            line-height: 1; /* 确保徽章本身行高紧凑 */
+            transition: background-color 0.2s ease, color 0.2s ease; /* 更精确的过渡效果 */
         }
 
+        /* 新增：当鼠标悬停在未激活的按钮上时，徽章也做出响应，增强整体感 */
+        .date-filter-btn:not(.active):hover .filter-count {
+            background-color: var(--border-secondary);
+            color: var(--text-primary);
+        }
+
+        .date-filter-btn.active .filter-count {
+            background-color: rgba(0, 0, 0, 0.2); /* 在激活状态下提供更佳的视觉对比 */
+            color: white;
+        }
         /* 优化：顶部加载进度条样式 */
         #progress-container {
             position: fixed;
@@ -1818,6 +1842,70 @@
             }
         }
 
+        /* 新增：移动端卡片滑动操作 */
+        @media (max-width: 768px) {
+            .paper-card {
+                position: relative;
+                overflow: hidden; /* 隐藏初始状态下的操作按钮 */
+                -webkit-user-select: none; /* 防止滑动时选中文本 */
+                user-select: none;
+            }
+
+            .paper-card-content {
+                position: relative;
+                z-index: 2;
+                background-color: var(--bg-secondary);
+                transition: transform 0.3s ease;
+                touch-action: pan-y; /* 允许垂直滚动，JS处理水平滑动 */
+            }
+
+            .swipe-action {
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 100px; /* 操作区域宽度 */
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 1;
+                color: white;
+                opacity: 0;
+                transition: opacity 0.3s ease;
+            }
+
+            .swipe-action-right { /* 右滑时出现（在左侧） */
+                left: 0;
+                background: linear-gradient(to right, #f59e0b, #facc15); /* 收藏的颜色 */
+            }
+
+            .swipe-action-left { /* 左滑时出现（在右侧） */
+                right: 0;
+                background: linear-gradient(to left, #6b7280, #9ca3af); /* 隐藏的颜色 */
+            }
+
+            .swipe-action svg {
+                width: 2rem;
+                height: 2rem;
+                transform: scale(0.8);
+                transition: transform 0.2s ease;
+            }
+
+            .paper-card.is-swiping .paper-card-content {
+                transition: none; /* 滑动时禁用过渡，确保实时响应 */
+            }
+
+            .paper-card.is-hidden {
+                transition: transform 0.4s ease, opacity 0.4s ease, max-height 0.5s ease 0.1s, margin-bottom 0.5s ease 0.1s, padding 0.5s ease 0.1s;
+                transform: translateX(-120%);
+                opacity: 0;
+                max-height: 0;
+                padding-top: 0;
+                padding-bottom: 0;
+                margin-bottom: 0 !important; /* 确保移除间距 */
+                border: none;
+            }
+        }
+
         /* 收藏按钮移动端优化 */
         @media (max-width: 768px) {
             .favorite-btn {
@@ -2429,5 +2517,24 @@
             position: fixed;
             bottom: 2rem;
             right: 2rem;
+        }
+        /* 建议 1：列表项交错加载动画 */
+        @keyframes fade-in-up {
+          from {
+            opacity: 0;
+            transform: translateY(15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        /* 我们创建一个工具类来触发动画 */
+        .paper-card.animate-in {
+          /* 使用一个平滑的缓动函数，并设置动画结束时保持最终状态 */
+          animation: fade-in-up 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+          /* 关键：动画延迟时间通过一个CSS变量来控制 */
+          animation-delay: calc(var(--stagger-index, 0) * 40ms);
         }
         

@@ -6,6 +6,13 @@ const state = {
     navObserver: null, currentQuery: '', favorites: new Set(), viewMode: 'detailed',
     allCategories: [],
     mainCategories: ['cs.CV', 'cs.LG', 'cs.CL', 'cs.AI', 'cs.RO', 'stat.ML'],
+    // 新增：用户提供的支持分类列表 (已去重)
+    supportedCategories: [
+        'cs.CR', 'cs.AI', 'cs.LG', 'cs.MA', 'cs.RO', 'cs.CV', 'cs.HC', 'cs.ET', 'cs.SE', 
+        'cs.SI', 'cs.NI', 'cs.IT', 'cs.AR', 'cs.DC', 'cs.CY', 'cs.CE', 'cs.FL', 
+        'eess.SY', 'eess.SP', 'eess.IV', 'eess.AS', 'cs.CL', 'cs.DS', 'cs.GR', 
+        'cs.IR', 'cs.NE', 'math.NA', 'cs.SD', 'cs.SC', 'cs.SY', 'cs.TO'
+    ],
     currentSearchResults: [],
     activeCategoryFilter: 'all',
     activeDateFilters: new Map(),
@@ -633,6 +640,19 @@ function applyQuickDateFilter(period) {
             break;
     }
 
+    // 新增：清除每日分布筛选器的激活状态，确保筛选互斥
+    const dailyFilterBtns = document.querySelectorAll('#daily-distribution-filters .date-filter-btn');
+    dailyFilterBtns.forEach(btn => btn.classList.remove('active'));
+
+    // 激活当前点击的按钮
+    const quickFilterBtns = document.querySelectorAll('.date-quick-filter');
+    quickFilterBtns.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.period === period) {
+            btn.classList.add('active');
+        }
+    });
+
     currentDateFilter = { startDate, endDate, period };
     updateDateFilterDisplay(displayText);
     filterPapersByDate();
@@ -659,6 +679,10 @@ function applyCustomDateFilter(startDate, endDate) {
 function clearDateFilter() {
     currentDateFilter = { startDate: null, endDate: null, period: null };
     updateDateFilterDisplay('');
+
+    // 清除快捷筛选按钮的激活状态
+    const quickFilterBtns = document.querySelectorAll('.date-quick-filter');
+    quickFilterBtns.forEach(btn => btn.classList.remove('active'));
 
     // 安全地清除输入值
     const startDateInput = document.getElementById('start-date');
@@ -1410,6 +1434,7 @@ async function init() {
 function setupUI() {
     setupQuickNav();
     setupCategoryFilters();
+    renderSupportedCategories(); // 新增：渲染支持的分类列表
     updateSearchStickiness();
     setupNavObserver();
     setupBackToTopButton();
@@ -2168,6 +2193,39 @@ function setupFavoritesButtons() {
     }
 }
 
+function renderSupportedCategories() {
+    const container = document.getElementById('supported-categories-list');
+    if (!container) {
+        console.warn('Supported categories container not found.');
+        return;
+    }
+
+    // 使用多种颜色让标签更生动
+    const colors = [
+        'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+        'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+        'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+        'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+        'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+        'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200'
+    ];
+
+    const categoriesHTML = state.supportedCategories.map((cat, index) => {
+        const colorClass = colors[index % colors.length];
+        return `
+            <button 
+                class="px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-transform transform hover:scale-105 ${colorClass}" 
+                data-action="search-tag" 
+                data-tag-value="${cat}"
+                title="搜索分类: ${cat}">
+                ${cat}
+            </button>
+        `;
+    }).join('');
+
+    container.innerHTML = categoriesHTML;
+}
+
 function setupCategoryFilters() {
     if (!state.categoryIndex) {
         categoryFiltersEl.innerHTML = '<p class="text-sm text-gray-500">分类信息加载中...</p>';
@@ -2204,10 +2262,10 @@ function renderCategoryFiltersForSearch(papers) {
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count);
 
-    let buttonsHTML = `<button class="category-filter-btn active flex-shrink-0" data-action="filter-category" data-category="all">全部 (${papers.length})</button>`;
+    let buttonsHTML = `<button class="category-filter-btn active flex-shrink-0" data-action="filter-category" data-category="all">全部 <span class="filter-count">${papers.length}</span></button>`;
     sortedCategories.forEach(catInfo => {
         if (catInfo.count > 0) {
-            buttonsHTML += `<button class="category-filter-btn flex-shrink-0" data-action="filter-category" data-category="${catInfo.name}">${catInfo.name} (${catInfo.count})</button>`;
+            buttonsHTML += `<button class="category-filter-btn flex-shrink-0" data-action="filter-category" data-category="${catInfo.name}">${catInfo.name} <span class="filter-count">${catInfo.count}</span></button>`;
         }
     });
     categoryFiltersEl.innerHTML = buttonsHTML;
@@ -2508,15 +2566,19 @@ function renderDailyDistributionFilters(papers) {
         return;
     }
 
-    const activeDate = (currentDateFilter.startDate === currentDateFilter.endDate) ? currentDateFilter.startDate : 'all';
+    // If no start date is set, or if a range is selected, 'all' is active.
+    // Otherwise, if a single day is selected (start === end), that day is active.
+    const activeDate = (!currentDateFilter.startDate || currentDateFilter.startDate !== currentDateFilter.endDate) 
+        ? 'all' 
+        : currentDateFilter.startDate;
 
-    let buttonsHTML = `<button class="date-filter-btn flex-shrink-0 ${activeDate === 'all' ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="all">全部日期 <sup>${papers.length}</sup></button>`;
+    let buttonsHTML = `<button class="date-filter-btn flex-shrink-0 ${activeDate === 'all' ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="all">全部日期 <span class="filter-count">${papers.length}</span></button>`;
 
     sortedDates.forEach(date => {
         const count = dateCounts[date];
         const dateObj = new Date(date);
         const displayDate = `${dateObj.getMonth() + 1}月${dateObj.getDate()}日`;
-        buttonsHTML += `<button class="date-filter-btn flex-shrink-0 ${activeDate === date ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="${date}">${displayDate} <sup>${count}</sup></button>`;
+        buttonsHTML += `<button class="date-filter-btn flex-shrink-0 ${activeDate === date ? 'active' : ''}" data-action="filter-by-distribution-date" data-date="${date}">${displayDate} <span class="filter-count">${count}</span></button>`;
     });
 
     filtersEl.innerHTML = buttonsHTML;
@@ -2541,7 +2603,7 @@ function renderDateFilter(month, papers, container) {
     const sortedDates = Object.keys(dateCounts).sort((a, b) => new Date(b) - new Date(a));
 
     // "All" button with total count
-    let buttonsHTML = `<button class="date-filter-btn ${activeDateFilter === 'all' ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="all">全部 <sup>${papers.length}</sup></button>`;
+    let buttonsHTML = `<button class="date-filter-btn ${activeDateFilter === 'all' ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-day="all">全部 <span class="filter-count">${papers.length}</span></button>`;
 
     // Buttons for each day
     sortedDates.forEach(fullDate => {
@@ -2551,7 +2613,7 @@ function renderDateFilter(month, papers, container) {
 
         buttonsHTML += `
                 <button class="date-filter-btn ${isActive ? 'active' : ''}" data-action="filter-by-date" data-month="${month}" data-full-date="${fullDate}">
-                    ${dayOfMonth}日 <sup>${count}</sup>
+                    ${dayOfMonth}日 <span class="filter-count">${count}</span>
                 </button>
             `;
     });
@@ -3853,6 +3915,14 @@ async function handleSearch() {
     try {
         const query = searchInput.value.trim();
 
+        // 新增：如果是一个新的搜索查询（而不是在现有结果中筛选），则重置日期筛选器
+        if (query !== state.currentQuery) {
+            currentDateFilter = { startDate: null, endDate: null, period: null };
+            updateDateFilterDisplay('');
+            const quickFilterBtns = document.querySelectorAll('.date-quick-filter');
+            quickFilterBtns.forEach(btn => btn.classList.remove('active'));
+        }
+
         // 新增：检查查询是否为论文ID
         if (/^\d{4}\.\d{4,5}$/.test(query)) {
             const paperId = query;
@@ -4190,6 +4260,20 @@ function setupGlobalEventListeners() {
         });
     }
 
+    // 新增：为支持的分类列表容器添加事件监听器，修复点击无效问题
+    const supportedCategoriesContainer = document.getElementById('supported-categories-container');
+    if (supportedCategoriesContainer) {
+        supportedCategoriesContainer.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-action="search-tag"]');
+            if (target) {
+                const tagValue = target.dataset.tagValue;
+                if (tagValue) {
+                    performTagSearch(tagValue);
+                }
+            }
+        });
+    }
+
     // 主容器事件代理
     mainContainer.addEventListener('click', (event) => {
         const target = event.target.closest('[data-action]');
@@ -4254,9 +4338,18 @@ function setupGlobalEventListeners() {
         dailyDistContainer.addEventListener('click', (event) => {
             const target = event.target.closest('[data-action="filter-by-distribution-date"]');
             if (!target || state.isFetching) return;
-
+ 
             const date = target.dataset.date;
-
+ 
+            // 新增：清除快捷筛选按钮的激活状态，确保筛选互斥
+            const quickFilterBtns = document.querySelectorAll('.date-quick-filter');
+            quickFilterBtns.forEach(btn => btn.classList.remove('active'));
+ 
+            // 手动管理每日分布筛选器的激活状态，以提高响应速度
+            const dailyFilterBtns = dailyDistContainer.querySelectorAll('.date-filter-btn');
+            dailyFilterBtns.forEach(btn => btn.classList.remove('active'));
+            target.classList.add('active');
+ 
             if (date === 'all') {
                 currentDateFilter = { startDate: null, endDate: null, period: null };
                 updateDateFilterDisplay('');
@@ -4264,7 +4357,6 @@ function setupGlobalEventListeners() {
                 currentDateFilter = { startDate: date, endDate: date, period: 'custom' };
                 updateDateFilterDisplay(`${new Date(date).getMonth() + 1}/${new Date(date).getDate()}`);
             }
-            renderDailyDistributionFilters(state.currentSearchResults);
             renderFilteredResults();
         });
     }
