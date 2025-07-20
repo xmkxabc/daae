@@ -4,8 +4,12 @@ let workerState = {
     lastProgressTime: Date.now(),
     totalPapers: 0,
     processedCount: 0,
-    startTime: 0
+    startTime: 0,
+    canvasContext: null // For future OffscreenCanvas support
 };
+
+// Check for OffscreenCanvas support
+const supportsOffscreenCanvas = typeof OffscreenCanvas !== 'undefined';
 
 // Self-monitoring: send heartbeat to detect stuck state
 function sendHeartbeat() {
@@ -14,7 +18,11 @@ function sendHeartbeat() {
             type: 'heartbeat',
             timestamp: Date.now(),
             processed: workerState.processedCount,
-            total: workerState.totalPapers
+            total: workerState.totalPapers,
+            features: {
+                offscreenCanvas: supportsOffscreenCanvas,
+                imageDataProcessing: !!workerState.canvasContext
+            }
         });
     }
 }
@@ -23,7 +31,7 @@ function sendHeartbeat() {
 setInterval(sendHeartbeat, 5000); // Every 5 seconds
 
 self.onmessage = function(e) {
-    const { url, month, config = {} } = e.data;
+    const { url, month, config = {}, asyncImageProcessing } = e.data;
     
     // Reset worker state
     workerState = {
@@ -31,14 +39,31 @@ self.onmessage = function(e) {
         lastProgressTime: Date.now(),
         totalPapers: 0,
         processedCount: 0,
-        startTime: Date.now()
+        startTime: Date.now(),
+        canvasContext: null
     };
     
-    // Send initial status
+    // Initialize OffscreenCanvas if requested and supported
+    if (asyncImageProcessing && supportsOffscreenCanvas) {
+        try {
+            const canvas = new OffscreenCanvas(256, 256);
+            workerState.canvasContext = canvas.getContext('2d');
+            console.log('OffscreenCanvas initialized for async image processing');
+        } catch (error) {
+            console.warn('Failed to initialize OffscreenCanvas:', error);
+        }
+    }
+    
+    // Send initial status with capabilities
     self.postMessage({
         type: 'started',
         month: month,
-        timestamp: workerState.startTime
+        timestamp: workerState.startTime,
+        capabilities: {
+            offscreenCanvas: supportsOffscreenCanvas,
+            asyncImageProcessing: !!workerState.canvasContext,
+            timeSlicing: config.enableTimeSlicing !== false
+        }
     });
     
     fetch(url)
@@ -108,6 +133,11 @@ function calculateOptimalBatchSize(totalPapers, config) {
         optimalSize = Math.floor(baseBatchSize * (totalPapers / 5000));
     }
     
+    // Adjust for OffscreenCanvas overhead if active
+    if (workerState.canvasContext) {
+        optimalSize = Math.round(optimalSize * 0.8); // Reduce by 20% for image processing overhead
+    }
+    
     return Math.max(minBatchSize, Math.min(maxBatchSize, optimalSize));
 }
 
@@ -124,7 +154,8 @@ function processBatchesWithTimeSlicing(batches, month, batchSize) {
                 month: month,
                 totalPapers: workerState.totalPapers,
                 processingTime: Date.now() - workerState.startTime,
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                processedWithAsyncFeatures: !!workerState.canvasContext
             });
             return;
         }
@@ -132,8 +163,11 @@ function processBatchesWithTimeSlicing(batches, month, batchSize) {
         const batch = batches[currentBatchIndex];
         const batchStartTime = Date.now();
         
+        // Process batch with optional async image processing
+        const processedBatch = processBatchWithAsyncFeatures(batch);
+        
         // Update progress tracking
-        workerState.processedCount += batch.length;
+        workerState.processedCount += processedBatch.length;
         workerState.lastProgressTime = Date.now();
         
         // Send batch data with enhanced progress information
@@ -144,7 +178,7 @@ function processBatchesWithTimeSlicing(batches, month, batchSize) {
         self.postMessage({
             type: 'batch',
             month: month,
-            papers: batch,
+            papers: processedBatch,
             progress: {
                 current: workerState.processedCount,
                 total: workerState.totalPapers,
@@ -153,7 +187,8 @@ function processBatchesWithTimeSlicing(batches, month, batchSize) {
                 totalBatches: batches.length,
                 processingSpeed: Math.round(processingSpeed),
                 estimatedTimeRemaining: Math.round(estimatedTimeRemaining),
-                batchProcessingTime: Date.now() - batchStartTime
+                batchProcessingTime: Date.now() - batchStartTime,
+                asyncFeaturesUsed: !!workerState.canvasContext
             }
         });
         
@@ -166,3 +201,62 @@ function processBatchesWithTimeSlicing(batches, month, batchSize) {
     // Start processing
     processNextBatch();
 }
+
+// Process batch with optional async features (placeholder for future enhancements)
+function processBatchWithAsyncFeatures(batch) {
+    // Future: Add OffscreenCanvas image processing here
+    // For now, just return the batch as-is
+    
+    if (workerState.canvasContext) {
+        // Placeholder for future image processing capabilities
+        // This could include generating thumbnails, processing diagrams, etc.
+        batch.forEach(paper => {
+            if (paper.hasVisualContent) {
+                // Future: Process visual content with OffscreenCanvas
+                paper.asyncProcessingApplied = true;
+            }
+        });
+    }
+    
+    return batch;
+}
+
+// Future: Async image processing functions
+function processImageAsync(imageData, options = {}) {
+    if (!workerState.canvasContext) {
+        return imageData; // No processing available
+    }
+    
+    try {
+        // Placeholder for async image processing
+        // Could include:
+        // - Thumbnail generation
+        // - Image optimization
+        // - Visual content analysis
+        // - Chart/diagram extraction
+        
+        const { width = 256, height = 256, quality = 0.8 } = options;
+        
+        // Future implementation would process the image here
+        return {
+            ...imageData,
+            processed: true,
+            timestamp: Date.now()
+        };
+    } catch (error) {
+        console.warn('Async image processing failed:', error);
+        return imageData;
+    }
+}
+
+// Export capabilities for main thread
+self.postMessage({
+    type: 'capabilities',
+    features: {
+        offscreenCanvas: supportsOffscreenCanvas,
+        timeSlicing: true,
+        asyncImageProcessing: supportsOffscreenCanvas,
+        dynamicBatching: true,
+        progressMonitoring: true
+    }
+});

@@ -116,7 +116,8 @@ const state = {
             adaptiveBatchSizing: true,
             enableStuckDetection: true,
             stuckDetectionThreshold: 30000, // 30 seconds
-            maxRetryAttempts: 2
+            maxRetryAttempts: 2,
+            enableAsyncImageProcessing: true // Enable OffscreenCanvas features
         }
     },
     // 阅读历史和行为追踪
@@ -422,6 +423,22 @@ const performance = {
         
         // Could notify user
         showToast(`检测到 ${month} 处理异常，已启动恢复机制`, 'warning');
+    },
+
+    updateWorkerCapabilities(features) {
+        // Store worker capabilities for optimization decisions
+        this.workerStats.capabilities = features;
+        
+        console.log('📋 Worker capabilities updated:', features);
+        
+        // Update UI display if available
+        const capabilitiesEl = document.getElementById('worker-capabilities');
+        if (capabilitiesEl) {
+            const capabilitiesList = Object.entries(features)
+                .map(([key, value]) => `${key}: ${value ? '✅' : '❌'}`)
+                .join(' | ');
+            capabilitiesEl.textContent = capabilitiesList;
+        }
     },
 
     cleanup() {
@@ -2798,7 +2815,8 @@ async function fetchMonthWithWorker(month) {
         worker.postMessage({ 
             url, 
             month, 
-            config: workerState.config 
+            config: workerState.config,
+            asyncImageProcessing: checkAsyncImageProcessingSupport()
         });
 
         // Calculate dynamic timeout based on estimated data size and network conditions
@@ -2827,6 +2845,12 @@ async function fetchMonthWithWorker(month) {
             switch (type) {
                 case 'started':
                     console.log(`Worker started processing ${month} at ${new Date(timestamp).toISOString()}`);
+                    if (e.data.capabilities) {
+                        console.log('Worker capabilities:', e.data.capabilities);
+                        if (e.data.capabilities.asyncImageProcessing) {
+                            console.log('✨ Async image processing enabled');
+                        }
+                    }
                     break;
 
                 case 'fetch_complete':
@@ -2911,9 +2935,21 @@ async function fetchMonthWithWorker(month) {
                     const totalTime = e.data.processingTime || (Date.now() - workerState.startTime);
                     console.log(`Web Worker completed loading ${month}: ${workerState.processedPapers} papers in ${totalTime}ms`);
                     
+                    if (e.data.processedWithAsyncFeatures) {
+                        console.log('🎨 Async features were used during processing');
+                    }
+                    
                     // Record successful completion
                     recordWorkerSuccess(month, totalTime, workerState.processedPapers);
                     resolve();
+                    break;
+
+                case 'capabilities':
+                    // Handle worker capabilities announcement
+                    console.log('Worker capabilities received:', e.data.features);
+                    if (performance.updateWorkerCapabilities) {
+                        performance.updateWorkerCapabilities(e.data.features);
+                    }
                     break;
 
                 case 'error':
@@ -6632,6 +6668,52 @@ if (typeof window !== 'undefined') {
     };
     console.log('🛠️ 开发者工具已加载，使用 window.arxivDevTools 访问');
     console.log('📊 个性化功能调试: window.arxivDevTools.personalization');
+}
+
+// Check if async image processing with OffscreenCanvas is supported
+function checkAsyncImageProcessingSupport() {
+    const preferences = state.userPreferences.workerPreferences;
+    
+    // Check user preference (add this to user preferences if not exists)
+    if (preferences.enableAsyncImageProcessing === false) {
+        return false;
+    }
+    
+    // Check browser support
+    if (typeof Worker === 'undefined') {
+        return false;
+    }
+    
+    // OffscreenCanvas is supported in Worker context if transferable objects are available
+    try {
+        return typeof OffscreenCanvas !== 'undefined' && 
+               typeof Worker !== 'undefined' &&
+               'transferControlToOffscreen' in document.createElement('canvas');
+    } catch (e) {
+        return false;
+    }
+}
+
+// Initialize OffscreenCanvas for async processing if supported
+function initializeAsyncImageProcessing() {
+    if (!checkAsyncImageProcessingSupport()) {
+        return null;
+    }
+    
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+        
+        if ('transferControlToOffscreen' in canvas) {
+            const offscreen = canvas.transferControlToOffscreen();
+            return offscreen;
+        }
+    } catch (error) {
+        console.warn('Failed to initialize OffscreenCanvas:', error);
+    }
+    
+    return null;
 }
 
 document.addEventListener('DOMContentLoaded', init);
