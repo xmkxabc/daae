@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worker Performance Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .progress { background: #f0f0f0; height: 20px; border-radius: 10px; margin: 10px 0; }
+        .progress-bar { background: #007bff; height: 100%; border-radius: 10px; transition: width 0.3s; }
+        .log { background: #f8f9fa; padding: 10px; border-radius: 5px; margin: 10px 0; max-height: 300px; overflow-y: auto; }
+        button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #007bff; }
+        .stat-value { font-size: 1.5em; font-weight: bold; color: #007bff; }
+        .stat-label { color: #6c757d; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <h1>Web Worker Performance Test</h1>
+    <p>This test validates the enhanced Web Worker implementation with dynamic timeouts and intelligent batching.</p>
+    
+    <div>
+        <button id="testWorker" onclick="testWorker()">Test Enhanced Worker</button>
+        <button id="testFallback" onclick="testFallback()">Test Enhanced Fallback</button>
+        <button id="clearLogs" onclick="clearLogs()">Clear Logs</button>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-value" id="processingTime">--</div>
+            <div class="stat-label">Processing Time (ms)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="paperCount">--</div>
+            <div class="stat-label">Papers Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="processingSpeed">--</div>
+            <div class="stat-label">Speed (papers/sec)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="batchSize">--</div>
+            <div class="stat-label">Batch Size Used</div>
+        </div>
+    </div>
+    
+    <div>
+        <strong>Progress:</strong>
+        <div class="progress">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+        </div>
+        <div id="progressText">Ready to test...</div>
+    </div>
+    
+    <div>
+        <strong>Logs:</strong>
+        <div class="log" id="logContainer"></div>
+    </div>
+
+    <script>
+        let testState = {
+            allPapers: new Map(),
+            userPreferences: {
+                workerPreferences: {
+                    enableWorkers: true,
+                    preferWorkerOverFallback: true,
+                    timeoutStrategy: 'adaptive',
+                    maxTimeoutMinutes: 5,
+                    retryFailedWorkers: true,
+                    adaptiveBatchSizing: true,
+                    enableStuckDetection: true,
+                    stuckDetectionThreshold: 30000,
+                    maxRetryAttempts: 2
+                }
+            }
+        };
+
+        function log(message) {
+            const container = document.getElementById('logContainer');
+            const timestamp = new Date().toLocaleTimeString();
+            container.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateProgress(text, percentage) {
+            document.getElementById('progressText').textContent = text;
+            document.getElementById('progressBar').style.width = percentage + '%';
+        }
+
+        function updateStats(stats) {
+            if (stats.processingTime) document.getElementById('processingTime').textContent = stats.processingTime;
+            if (stats.paperCount) document.getElementById('paperCount').textContent = stats.paperCount;
+            if (stats.processingSpeed) document.getElementById('processingSpeed').textContent = stats.processingSpeed.toFixed(1);
+            if (stats.batchSize) document.getElementById('batchSize').textContent = stats.batchSize;
+        }
+
+        function clearLogs() {
+            document.getElementById('logContainer').innerHTML = '';
+            updateProgress('Ready to test...', 0);
+            updateStats({
+                processingTime: '--',
+                paperCount: '--',
+                processingSpeed: '--',
+                batchSize: '--'
+            });
+        }
+
+        function calculateDynamicTimeout() {
+            const preferences = testState.userPreferences.workerPreferences;
+            const baseTimeout = 60000;
+            const maxTimeout = preferences.maxTimeoutMinutes * 60 * 1000;
+            const minTimeout = 30000;
+            
+            if (preferences.timeoutStrategy === 'fixed') {
+                return Math.min(maxTimeout, baseTimeout);
+            }
+            
+            if (preferences.timeoutStrategy === 'aggressive') {
+                return Math.min(maxTimeout, baseTimeout * 0.7);
+            }
+            
+            // Adaptive strategy (simplified for test)
+            return Math.min(maxTimeout, baseTimeout * 1.2);
+        }
+
+        async function testWorker() {
+            const button = document.getElementById('testWorker');
+            button.disabled = true;
+            
+            log('🚀 Starting enhanced Worker test...');
+            updateProgress('Initializing Worker...', 0);
+            
+            const startTime = Date.now();
+            let processedPapers = 0;
+            let batchSizeUsed = 0;
+            
+            try {
+                const worker = new Worker('./json-parser-worker.js');
+                const url = './data/database-2025-07.json';
+                const month = '2025-07';
+                
+                const dynamicTimeout = calculateDynamicTimeout();
+                log(`📊 Dynamic timeout calculated: ${dynamicTimeout}ms`);
+                
+                const config = {
+                    baseBatchSize: 1000,
+                    maxBatchSize: 2000,
+                    minBatchSize: 100,
+                    enableTimeSlicing: true
+                };
+                
+                updateProgress('Sending data to Worker...', 10);
+                worker.postMessage({ url, month, config });
+                
+                const timeout = setTimeout(() => {
+                    worker.terminate();
+                    log('❌ Worker timeout reached');
+                    button.disabled = false;
+                }, dynamicTimeout);
+                
+                worker.onmessage = function(e) {
+                    const { type, papers, progress, timestamp, batchSize, totalPapers } = e.data;
+                    
+                    switch (type) {
+                        case 'started':
+                            log('✅ Worker started processing');
+                            updateProgress('Worker started...', 15);
+                            break;
+                            
+                        case 'fetch_complete':
+                            log('📥 Data fetch completed');
+                            updateProgress('Fetch completed, parsing JSON...', 25);
+                            break;
+                            
+                        case 'processing_start':
+                            log(`🔄 Processing started: ${totalPapers} papers, batch size: ${batchSize}`);
+                            batchSizeUsed = batchSize;
+                            updateProgress('Processing batches...', 30);
+                            break;
+                            
+                        case 'heartbeat':
+                            log(`💓 Heartbeat: ${e.data.processed}/${e.data.total} papers processed`);
+                            break;
+                            
+                        case 'batch':
+                            papers.forEach(paper => {
+                                if (paper && paper.id && !testState.allPapers.has(paper.id)) {
+                                    testState.allPapers.set(paper.id, paper);
+                                }
+                            });
+                            processedPapers += papers.length;
+                            
+                            if (progress) {
+                                const progressText = `Processing: ${progress.current}/${progress.total}`;
+                                if (progress.processingSpeed) {
+                                    log(`⚡ Speed: ${progress.processingSpeed} papers/sec`);
+                                }
+                                updateProgress(progressText, 30 + (progress.percentage * 0.6));
+                            }
+                            break;
+                            
+                        case 'complete':
+                            clearTimeout(timeout);
+                            worker.terminate();
+                            
+                            const totalTime = Date.now() - startTime;
+                            const speed = processedPapers / (totalTime / 1000);
+                            
+                            log(`🎉 Worker completed successfully!`);
+                            log(`📊 Total time: ${totalTime}ms`);
+                            log(`📈 Papers processed: ${processedPapers}`);
+                            log(`⚡ Processing speed: ${speed.toFixed(1)} papers/sec`);
+                            
+                            updateProgress('Completed!', 100);
+                            updateStats({
+                                processingTime: totalTime,
+                                paperCount: processedPapers,
+                                processingSpeed: speed,
+                                batchSize: batchSizeUsed
+                            });
+                            
+                            button.disabled = false;
+                            break;
+                            
+                        case 'error':
+                            clearTimeout(timeout);
+                            worker.terminate();
+                            log(`❌ Worker error: ${e.data.error}`);
+                            updateProgress('Error occurred', 0);
+                            button.disabled = false;
+                            break;
+                    }
+                };
+                
+                worker.onerror = function(error) {
+                    clearTimeout(timeout);
+                    worker.terminate();
+                    log(`💥 Worker crashed: ${error.message}`);
+                    updateProgress('Worker crashed', 0);
+                    button.disabled = false;
+                };
+                
+            } catch (error) {
+                log(`❌ Test failed: ${error.message}`);
+                updateProgress('Test failed', 0);
+                button.disabled = false;
+            }
+        }
+
+        async function testFallback() {
+            const button = document.getElementById('testFallback');
+            button.disabled = true;
+            
+            log('🔄 Starting enhanced fallback test...');
+            updateProgress('Starting fallback processing...', 0);
+            
+            const startTime = Date.now();
+            
+            try {
+                const url = './data/database-2025-07.json';
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const contentLength = response.headers.get('content-length');
+                const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
+                log(`📊 File size: ${(totalSize / 1024 / 1024).toFixed(1)}MB`);
+                
+                updateProgress('Parsing JSON...', 20);
+                const papers = await response.json();
+                log(`📥 Loaded ${papers.length} papers`);
+                
+                updateProgress('Processing with adaptive batching...', 40);
+                
+                // Simulate adaptive batch processing
+                const adaptiveBatchSize = Math.min(500, Math.max(100, Math.floor(papers.length / 20)));
+                log(`🔧 Using adaptive batch size: ${adaptiveBatchSize}`);
+                
+                let processedCount = 0;
+                const totalBatches = Math.ceil(papers.length / adaptiveBatchSize);
+                
+                for (let i = 0; i < papers.length; i += adaptiveBatchSize) {
+                    const batch = papers.slice(i, i + adaptiveBatchSize);
+                    
+                    batch.forEach(paper => {
+                        if (paper && paper.id && !testState.allPapers.has(paper.id)) {
+                            testState.allPapers.set(paper.id, paper);
+                        }
+                    });
+                    
+                    processedCount += batch.length;
+                    const progress = (processedCount / papers.length) * 100;
+                    
+                    updateProgress(`Fallback processing: ${processedCount}/${papers.length}`, 40 + progress * 0.6);
+                    
+                    // Yield control to prevent blocking
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+                
+                const totalTime = Date.now() - startTime;
+                const speed = processedCount / (totalTime / 1000);
+                
+                log(`🎉 Fallback completed successfully!`);
+                log(`📊 Total time: ${totalTime}ms`);
+                log(`📈 Papers processed: ${processedCount}`);
+                log(`⚡ Processing speed: ${speed.toFixed(1)} papers/sec`);
+                
+                updateProgress('Fallback completed!', 100);
+                updateStats({
+                    processingTime: totalTime,
+                    paperCount: processedCount,
+                    processingSpeed: speed,
+                    batchSize: adaptiveBatchSize
+                });
+                
+            } catch (error) {
+                log(`❌ Fallback test failed: ${error.message}`);
+                updateProgress('Fallback failed', 0);
+            }
+            
+            button.disabled = false;
+        }
+
+        // Initialize
+        log('🔧 Enhanced Web Worker test interface ready');
+        log('💡 Click "Test Enhanced Worker" to test the new Worker implementation');
+        log('🔄 Click "Test Enhanced Fallback" to test the improved fallback method');
+    </script>
+</body>
+</html>

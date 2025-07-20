@@ -105,6 +105,18 @@ const state = {
             weeklyTarget: 30,
             currentStreak: 0,
             longestStreak: 0
+        },
+        // Web Worker性能偏好
+        workerPreferences: {
+            enableWorkers: true,
+            preferWorkerOverFallback: true,
+            timeoutStrategy: 'adaptive', // 'fixed', 'adaptive', 'aggressive'
+            maxTimeoutMinutes: 5,
+            retryFailedWorkers: true,
+            adaptiveBatchSizing: true,
+            enableStuckDetection: true,
+            stuckDetectionThreshold: 30000, // 30 seconds
+            maxRetryAttempts: 2
         }
     },
     // 阅读历史和行为追踪
@@ -197,6 +209,13 @@ const performance = {
     startTime: 0,
     loadTimes: new Map(),
     memoryUsage: 0,
+    workerStats: {
+        activeWorkers: new Map(),
+        completedTasks: [],
+        failedTasks: [],
+        averageProcessingTime: 0,
+        successRate: 0
+    },
 
     startTracking(operation) {
         this.startTime = Date.now();
@@ -218,6 +237,191 @@ const performance = {
                 showToast('内存使用过高，建议刷新页面以获得更好性能', 'warning');
             }
         }
+    },
+
+    // Enhanced Worker performance tracking
+    updateWorkerStats(stats) {
+        const { month, processed, total, speed, estimatedRemaining } = stats;
+        
+        this.workerStats.activeWorkers.set(month, {
+            processed,
+            total,
+            speed,
+            estimatedRemaining,
+            lastUpdate: Date.now()
+        });
+        
+        // Update UI if available
+        this.updateWorkerStatsDisplay();
+    },
+
+    recordWorkerSuccess(month, processingTime, paperCount) {
+        this.workerStats.completedTasks.push({
+            month,
+            processingTime,
+            paperCount,
+            timestamp: Date.now(),
+            success: true
+        });
+        
+        // Remove from active workers
+        this.workerStats.activeWorkers.delete(month);
+        
+        // Calculate updated statistics
+        this.calculateWorkerMetrics();
+        
+        console.log(`📊 Worker completed: ${month} in ${processingTime}ms (${paperCount} papers)`);
+    },
+
+    recordWorkerFailure(month, reason, timeElapsed) {
+        this.workerStats.failedTasks.push({
+            month,
+            reason,
+            timeElapsed,
+            timestamp: Date.now(),
+            success: false
+        });
+        
+        // Remove from active workers
+        this.workerStats.activeWorkers.delete(month);
+        
+        // Calculate updated statistics
+        this.calculateWorkerMetrics();
+        
+        console.warn(`⚠️ Worker failed: ${month} - ${reason} after ${timeElapsed}ms`);
+    },
+
+    calculateWorkerMetrics() {
+        const allTasks = [...this.workerStats.completedTasks, ...this.workerStats.failedTasks];
+        const recentTasks = allTasks.filter(task => 
+            Date.now() - task.timestamp < 60 * 60 * 1000 // Last hour
+        );
+        
+        if (recentTasks.length > 0) {
+            const successfulTasks = recentTasks.filter(task => task.success);
+            this.workerStats.successRate = successfulTasks.length / recentTasks.length;
+            
+            if (successfulTasks.length > 0) {
+                this.workerStats.averageProcessingTime = 
+                    successfulTasks.reduce((sum, task) => sum + task.processingTime, 0) / successfulTasks.length;
+            }
+        }
+        
+        // Update display
+        this.updateWorkerStatsDisplay();
+    },
+
+    updateWorkerStatsDisplay() {
+        // Update worker stats in UI if element exists
+        const workerStatsEl = document.getElementById('worker-stats');
+        if (workerStatsEl) {
+            const activeCount = this.workerStats.activeWorkers.size;
+            const successRate = (this.workerStats.successRate * 100).toFixed(1);
+            const avgTime = Math.round(this.workerStats.averageProcessingTime / 1000);
+            
+            workerStatsEl.innerHTML = `
+                <div class="text-xs text-gray-600">
+                    活跃Worker: ${activeCount} | 
+                    成功率: ${successRate}% | 
+                    平均处理时间: ${avgTime}s
+                </div>
+            `;
+        }
+    },
+
+    updateWorkerUsageStats(month, status, errorMessage) {
+        // Additional tracking for usage patterns
+        const usageKey = 'worker_usage_analytics';
+        const stored = localStorage.getItem(usageKey);
+        
+        let analytics = {
+            totalAttempts: 0,
+            successfulWorkerUsage: 0,
+            fallbackUsage: 0,
+            timeoutFailures: 0,
+            stuckFailures: 0,
+            networkFailures: 0
+        };
+        
+        if (stored) {
+            try {
+                analytics = { ...analytics, ...JSON.parse(stored) };
+            } catch (e) {
+                console.warn('Failed to parse usage analytics:', e);
+            }
+        }
+        
+        analytics.totalAttempts++;
+        
+        switch (status) {
+            case 'success':
+                analytics.successfulWorkerUsage++;
+                break;
+            case 'fallback_success':
+            case 'fallback_only':
+                analytics.fallbackUsage++;
+                break;
+            case 'failed':
+                if (errorMessage) {
+                    if (errorMessage.includes('超时') || errorMessage.includes('timeout')) {
+                        analytics.timeoutFailures++;
+                    } else if (errorMessage.includes('卡住') || errorMessage.includes('stuck')) {
+                        analytics.stuckFailures++;
+                    } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+                        analytics.networkFailures++;
+                    }
+                }
+                break;
+        }
+        
+        try {
+            localStorage.setItem(usageKey, JSON.stringify(analytics));
+        } catch (e) {
+            console.warn('Failed to save usage analytics:', e);
+        }
+    },
+
+    getWorkerAnalytics() {
+        const usageKey = 'worker_usage_analytics';
+        const stored = localStorage.getItem(usageKey);
+        
+        if (stored) {
+            try {
+                return JSON.parse(stored);
+            } catch (e) {
+                console.warn('Failed to parse usage analytics:', e);
+            }
+        }
+        
+        return null;
+    },
+
+    // Monitor for stuck or inactive workers
+    monitorWorkerHealth() {
+        const stuckThreshold = 60000; // 1 minute without update
+        const now = Date.now();
+        
+        for (const [month, workerInfo] of this.workerStats.activeWorkers.entries()) {
+            const timeSinceUpdate = now - workerInfo.lastUpdate;
+            
+            if (timeSinceUpdate > stuckThreshold) {
+                console.warn(`🚨 Worker for ${month} may be stuck - no updates for ${timeSinceUpdate}ms`);
+                
+                // Could trigger recovery actions here
+                this.triggerWorkerRecovery(month, workerInfo);
+            }
+        }
+    },
+
+    triggerWorkerRecovery(month, workerInfo) {
+        // This could implement recovery strategies
+        console.log(`🔧 Attempting recovery for stuck worker: ${month}`);
+        
+        // For now, just remove from active tracking
+        this.workerStats.activeWorkers.delete(month);
+        
+        // Could notify user
+        showToast(`检测到 ${month} 处理异常，已启动恢复机制`, 'warning');
     },
 
     cleanup() {
@@ -242,14 +446,35 @@ const performance = {
         if (cleanedCount > 0) {
             console.log(`🧹 Cleaned up ${cleanedCount} cards to save memory`);
         }
+        
+        // Also cleanup old worker tracking data
+        this.cleanupWorkerData();
+    },
+
+    cleanupWorkerData() {
+        // Keep only recent completed and failed tasks
+        const oneHourAgo = Date.now() - (60 * 60 * 1000);
+        
+        this.workerStats.completedTasks = this.workerStats.completedTasks.filter(
+            task => task.timestamp > oneHourAgo
+        );
+        
+        this.workerStats.failedTasks = this.workerStats.failedTasks.filter(
+            task => task.timestamp > oneHourAgo
+        );
+        
+        // Recalculate metrics after cleanup
+        this.calculateWorkerMetrics();
     }
 };
 
-// 每30秒执行一次内存清理
+// 每30秒执行一次内存清理和Worker健康检查
 setInterval(() => {
     if (!state.isFetching) {
         performance.cleanup();
     }
+    // Always monitor worker health
+    performance.monitorWorkerHealth();
 }, 30000);
 
 // --- 工具函数 ---
@@ -2340,13 +2565,50 @@ async function fetchMonth(month, force = false) { // 1. 添加 force 参数，�
         console.warn(`🔄 强制重新加载月份 ${month}，数据可能不完整`);
     }
 
-    // 检查是否支持 Web Worker
-    if (typeof Worker !== 'undefined') {
-        console.log(`🔧 使用 Web Worker 加载 ${month}`);
-        await fetchMonthWithWorker(month);
+    // Enhanced Worker support detection and intelligent fallback
+    const shouldUseWorker = checkWorkerSupport(month);
+    let workerAttempted = false;
+    
+    if (shouldUseWorker) {
+        try {
+            console.log(`🔧 使用 Web Worker 加载 ${month}`);
+            workerAttempted = true;
+            await fetchMonthWithWorker(month);
+            
+            // Record successful Worker usage
+            recordWorkerUsage(month, 'success');
+            
+        } catch (workerError) {
+            console.warn(`🚨 Web Worker 失败 (${month}):`, workerError.message);
+            
+            // Record Worker failure
+            recordWorkerUsage(month, 'failed', workerError.message);
+            
+            // Intelligently decide whether to retry with fallback
+            const shouldRetryWithFallback = shouldAttemptFallback(workerError, month);
+            
+            if (shouldRetryWithFallback) {
+                console.log(`🔄 自动切换到 fallback 方法加载 ${month}`);
+                updateProgress(`Worker 失败，切换到主线程模式...`, 25);
+                
+                try {
+                    await fetchMonthFallback(month);
+                    recordWorkerUsage(month, 'fallback_success');
+                    showToast(`${month} 已通过备用方式加载完成`, 'info');
+                } catch (fallbackError) {
+                    console.error(`❌ Fallback 也失败了 (${month}):`, fallbackError.message);
+                    recordWorkerUsage(month, 'fallback_failed', fallbackError.message);
+                    throw new Error(`数据加载失败：${fallbackError.message}`);
+                }
+            } else {
+                // Don't retry with fallback, just throw the error
+                throw workerError;
+            }
+        }
     } else {
-        console.log(`📝 使用 fallback 方法加载 ${month}`);
+        console.log(`📝 直接使用 fallback 方法加载 ${month}${!workerAttempted ? ' (Worker 不可用)' : ''}`);
         await fetchMonthFallback(month);
+        recordWorkerUsage(month, 'fallback_only');
     }
     
     // 验证加载结果
@@ -2366,6 +2628,148 @@ async function fetchMonth(month, force = false) { // 1. 添加 force 参数，�
     return papersFromThisMonth.length;
 }
 
+// Check if Web Worker should be used for this month
+function checkWorkerSupport(month) {
+    // Basic Worker support check
+    if (typeof Worker === 'undefined') {
+        return false;
+    }
+    
+    // Check recent failure rate for this month
+    const failureHistory = getWorkerFailureHistory(month);
+    if (failureHistory.recentFailureRate > 0.7) { // >70% failure rate
+        console.log(`Skipping Worker for ${month} due to high failure rate: ${failureHistory.recentFailureRate}`);
+        return false;
+    }
+    
+    // Check if this month has consistently failed before
+    const monthHistory = getMonthPerformanceHistory(month);
+    if (monthHistory && monthHistory.failures.length > monthHistory.successes.length * 2) {
+        console.log(`Skipping Worker for ${month} due to poor historical performance`);
+        return false;
+    }
+    
+    // Check system resources
+    if (performance.memory && performance.memory.usedJSHeapSize > 150 * 1024 * 1024) { // >150MB
+        console.log(`Skipping Worker for ${month} due to high memory usage`);
+        return false;
+    }
+    
+    return true;
+}
+
+// Determine if fallback should be attempted after Worker failure
+function shouldAttemptFallback(error, month) {
+    const errorMessage = error.message.toLowerCase();
+    
+    // Always retry for timeout errors (might be network related)
+    if (errorMessage.includes('超时') || errorMessage.includes('timeout')) {
+        return true;
+    }
+    
+    // Always retry for stuck/progress errors
+    if (errorMessage.includes('卡住') || errorMessage.includes('stuck') || errorMessage.includes('progress')) {
+        return true;
+    }
+    
+    // Retry for network-related errors
+    if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('failed to fetch')) {
+        return true;
+    }
+    
+    // Don't retry for structural errors (JSON parse errors, etc.)
+    if (errorMessage.includes('parse') || errorMessage.includes('syntax')) {
+        return false;
+    }
+    
+    // Don't retry if we've already failed multiple times recently
+    const failureHistory = getWorkerFailureHistory(month);
+    if (failureHistory.recentFailures >= 3) {
+        console.log(`Not retrying fallback for ${month} - too many recent failures`);
+        return false;
+    }
+    
+    // Default: attempt fallback
+    return true;
+}
+
+// Get Worker failure history for decision making
+function getWorkerFailureHistory(month) {
+    const historyKey = 'worker_failure_history';
+    const stored = localStorage.getItem(historyKey);
+    
+    let history = {};
+    if (stored) {
+        try {
+            history = JSON.parse(stored);
+        } catch (e) {
+            console.warn('Failed to parse worker failure history:', e);
+        }
+    }
+    
+    const monthHistory = history[month] || { failures: [], successes: [] };
+    const now = Date.now();
+    const oneHourAgo = now - (60 * 60 * 1000);
+    
+    // Count recent failures (last hour)
+    const recentFailures = monthHistory.failures.filter(f => f.timestamp > oneHourAgo).length;
+    const recentSuccesses = monthHistory.successes.filter(s => s.timestamp > oneHourAgo).length;
+    const totalRecent = recentFailures + recentSuccesses;
+    
+    return {
+        recentFailures,
+        recentSuccesses,
+        recentFailureRate: totalRecent > 0 ? recentFailures / totalRecent : 0
+    };
+}
+
+// Record Worker usage for analytics and decision making
+function recordWorkerUsage(month, status, errorMessage = null) {
+    const historyKey = 'worker_failure_history';
+    const stored = localStorage.getItem(historyKey);
+    
+    let history = {};
+    if (stored) {
+        try {
+            history = JSON.parse(stored);
+        } catch (e) {
+            console.warn('Failed to parse worker failure history:', e);
+        }
+    }
+    
+    if (!history[month]) {
+        history[month] = { failures: [], successes: [] };
+    }
+    
+    const record = {
+        timestamp: Date.now(),
+        status,
+        errorMessage
+    };
+    
+    if (status.includes('success')) {
+        history[month].successes.push(record);
+        // Keep only last 10 successes
+        history[month].successes = history[month].successes.slice(-10);
+    } else {
+        history[month].failures.push(record);
+        // Keep only last 10 failures
+        history[month].failures = history[month].failures.slice(-10);
+    }
+    
+    // Save updated history
+    try {
+        localStorage.setItem(historyKey, JSON.stringify(history));
+    } catch (e) {
+        console.warn('Failed to save worker usage history:', e);
+    }
+    
+    // Update global performance tracking
+    if (performance.updateWorkerUsageStats) {
+        performance.updateWorkerUsageStats(month, status, errorMessage);
+    }
+}
+
 async function fetchMonthWithWorker(month) {
     console.log(`Using Web Worker for ${month}`);
 
@@ -2373,20 +2777,88 @@ async function fetchMonthWithWorker(month) {
         const worker = new Worker('./json-parser-worker.js');
         const url = `./data/database-${month}.json`;
 
+        // Enhanced worker state tracking
+        const workerState = {
+            startTime: Date.now(),
+            lastHeartbeat: Date.now(),
+            lastProgressUpdate: Date.now(),
+            totalPapers: 0,
+            processedPapers: 0,
+            isStuck: false,
+            progressStuckCount: 0,
+            timeoutId: null,
+            heartbeatCheckId: null,
+            config: getWorkerConfig(),
+            estimatedSize: 0
+        };
+
         updateProgress(`加载 ${month} (使用 Web Worker)...`, 30);
 
-        worker.postMessage({ url, month });
+        // Send configuration to worker
+        worker.postMessage({ 
+            url, 
+            month, 
+            config: workerState.config 
+        });
 
-        let processedPapers = 0;
-        const timeout = setTimeout(() => {
+        // Calculate dynamic timeout based on estimated data size and network conditions
+        const dynamicTimeout = calculateDynamicTimeout(month);
+        console.log(`Dynamic timeout set to ${dynamicTimeout}ms for ${month}`);
+
+        // Set main timeout
+        workerState.timeoutId = setTimeout(() => {
+            console.warn(`Web Worker timeout after ${dynamicTimeout}ms`);
             worker.terminate();
-            reject(new Error('Web Worker 超时'));
-        }, 60000); // 60秒超时
+            recordWorkerFailure(month, 'timeout', dynamicTimeout);
+            reject(new Error(`Web Worker 超时 (${Math.round(dynamicTimeout/1000)}秒)`));
+        }, dynamicTimeout);
+
+        // Start heartbeat monitoring for stuck detection
+        workerState.heartbeatCheckId = setInterval(() => {
+            checkWorkerProgress(workerState, worker, month, reject);
+        }, 5000); // Check every 5 seconds
 
         worker.onmessage = function (e) {
-            const { type, papers, progress, error } = e.data;
+            const { type, papers, progress, error, timestamp, contentLength, totalPapers, batchSize, processingSpeed, estimatedTimeRemaining } = e.data;
+
+            // Update heartbeat timestamp
+            workerState.lastHeartbeat = timestamp || Date.now();
 
             switch (type) {
+                case 'started':
+                    console.log(`Worker started processing ${month} at ${new Date(timestamp).toISOString()}`);
+                    break;
+
+                case 'fetch_complete':
+                    if (contentLength) {
+                        workerState.estimatedSize = parseInt(contentLength, 10);
+                        console.log(`Fetch completed for ${month}, size: ${(workerState.estimatedSize / 1024 / 1024).toFixed(1)}MB`);
+                    }
+                    break;
+
+                case 'processing_start':
+                    workerState.totalPapers = totalPapers;
+                    console.log(`Processing started for ${month}: ${totalPapers} papers, batch size: ${batchSize}`);
+                    updateProgress(
+                        `处理 ${month}: 开始处理 ${totalPapers} 篇论文 (批次大小: ${batchSize})`,
+                        35
+                    );
+                    break;
+
+                case 'heartbeat':
+                    // Update heartbeat tracking
+                    workerState.lastHeartbeat = timestamp;
+                    workerState.processedPapers = e.data.processed;
+                    workerState.totalPapers = e.data.total;
+                    
+                    // Check if progress has been made
+                    if (e.data.processed > workerState.processedPapers) {
+                        workerState.lastProgressUpdate = timestamp;
+                        workerState.progressStuckCount = 0;
+                        workerState.isStuck = false;
+                    }
+                    break;
+
                 case 'batch':
                     // 批量处理接收到的论文数据
                     papers.forEach(paper => {
@@ -2394,44 +2866,307 @@ async function fetchMonthWithWorker(month) {
                             state.allPapers.set(paper.id, paper);
                         }
                     });
-                    processedPapers += papers.length;
+                    workerState.processedPapers += papers.length;
+                    workerState.lastProgressUpdate = Date.now();
+                    workerState.progressStuckCount = 0;
+                    workerState.isStuck = false;
 
                     if (progress) {
+                        let progressText = `处理 ${month}: ${progress.current}/${progress.total}`;
+                        
+                        // Add processing speed information if available
+                        if (progress.processingSpeed) {
+                            progressText += ` (${progress.processingSpeed} 篇/秒)`;
+                        }
+                        
+                        // Add estimated time remaining if available
+                        if (progress.estimatedTimeRemaining && progress.estimatedTimeRemaining > 0) {
+                            progressText += ` 预计剩余: ${progress.estimatedTimeRemaining}秒`;
+                        }
+
                         updateProgress(
-                            `处理 ${month}: ${progress.current}/${progress.total}`,
+                            progressText,
                             30 + (progress.percentage * 0.6)
                         );
+
+                        // Update performance monitoring
+                        if (performance.updateWorkerStats) {
+                            performance.updateWorkerStats({
+                                month,
+                                processed: progress.current,
+                                total: progress.total,
+                                speed: progress.processingSpeed,
+                                estimatedRemaining: progress.estimatedTimeRemaining
+                            });
+                        }
                     }
                     break;
 
                 case 'complete':
-                    clearTimeout(timeout);
+                    clearTimeout(workerState.timeoutId);
+                    clearInterval(workerState.heartbeatCheckId);
                     worker.terminate();
                     state.loadedMonths.add(month);
-                    console.log(`Web Worker completed loading ${month}: ${processedPapers} papers`);
+                    
+                    const totalTime = e.data.processingTime || (Date.now() - workerState.startTime);
+                    console.log(`Web Worker completed loading ${month}: ${workerState.processedPapers} papers in ${totalTime}ms`);
+                    
+                    // Record successful completion
+                    recordWorkerSuccess(month, totalTime, workerState.processedPapers);
                     resolve();
                     break;
 
                 case 'error':
-                    clearTimeout(timeout);
+                    clearTimeout(workerState.timeoutId);
+                    clearInterval(workerState.heartbeatCheckId);
                     worker.terminate();
                     console.error(`Web Worker error for ${month}:`, error);
+                    recordWorkerFailure(month, 'worker_error', Date.now() - workerState.startTime);
                     reject(new Error(error));
                     break;
             }
         };
 
         worker.onerror = function (error) {
-            clearTimeout(timeout);
+            clearTimeout(workerState.timeoutId);
+            clearInterval(workerState.heartbeatCheckId);
             worker.terminate();
             console.error(`Web Worker error:`, error);
+            recordWorkerFailure(month, 'onerror', Date.now() - workerState.startTime);
             reject(error);
         };
     });
 }
 
+// Calculate dynamic timeout based on various factors
+function calculateDynamicTimeout(month) {
+    const preferences = state.userPreferences.workerPreferences;
+    const baseTimeout = 60000; // 60 seconds base
+    const maxTimeout = preferences.maxTimeoutMinutes * 60 * 1000; // User-configurable max
+    const minTimeout = 30000;  // 30 seconds minimum
+    
+    // Check timeout strategy
+    if (preferences.timeoutStrategy === 'fixed') {
+        return Math.min(maxTimeout, baseTimeout);
+    }
+    
+    if (preferences.timeoutStrategy === 'aggressive') {
+        // Shorter timeouts, more likely to fallback
+        return Math.min(maxTimeout, baseTimeout * 0.7);
+    }
+    
+    // Default: adaptive strategy
+    const networkCondition = getNetworkCondition();
+    const previousPerformance = getMonthPerformanceHistory(month);
+    const estimatedDataSize = getEstimatedDataSize(month);
+    
+    let dynamicTimeout = baseTimeout;
+    
+    // Adjust based on network conditions
+    switch (networkCondition) {
+        case 'slow':
+            dynamicTimeout *= 2;
+            break;
+        case 'fast':
+            dynamicTimeout *= 0.7;
+            break;
+        case 'unknown':
+        default:
+            dynamicTimeout *= 1.2; // Conservative for unknown conditions
+            break;
+    }
+    
+    // Adjust based on estimated data size
+    if (estimatedDataSize > 10 * 1024 * 1024) { // > 10MB
+        dynamicTimeout *= 1.5;
+    } else if (estimatedDataSize < 1 * 1024 * 1024) { // < 1MB
+        dynamicTimeout *= 0.8;
+    }
+    
+    // Adjust based on previous performance
+    if (previousPerformance && previousPerformance.averageTime) {
+        const performanceMultiplier = Math.max(0.5, Math.min(2.0, previousPerformance.averageTime / baseTimeout));
+        dynamicTimeout *= performanceMultiplier;
+    }
+    
+    // Ensure timeout is within bounds
+    return Math.max(minTimeout, Math.min(maxTimeout, Math.round(dynamicTimeout)));
+}
+
+// Get network condition assessment
+function getNetworkCondition() {
+    // Use navigator.connection if available
+    if (navigator.connection) {
+        const connection = navigator.connection;
+        const effectiveType = connection.effectiveType;
+        
+        if (effectiveType === '4g' && connection.downlink > 10) {
+            return 'fast';
+        } else if (effectiveType === '3g' || connection.downlink < 1) {
+            return 'slow';
+        }
+    }
+    
+    // Fallback: use performance timing if available
+    if (performance.timing) {
+        const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+        if (loadTime < 2000) return 'fast';
+        if (loadTime > 5000) return 'slow';
+    }
+    
+    return 'unknown';
+}
+
+// Get estimated data size for a month
+function getEstimatedDataSize(month) {
+    // Try to estimate based on previous months or use a default
+    const averageSize = 5 * 1024 * 1024; // 5MB default
+    
+    // Could be enhanced with actual historical data
+    if (performance.loadTimes && performance.loadTimes.has(month)) {
+        return performance.loadTimes.get(month).estimatedSize || averageSize;
+    }
+    
+    return averageSize;
+}
+
+// Get performance history for a specific month
+function getMonthPerformanceHistory(month) {
+    const historyKey = `worker_perf_${month}`;
+    const stored = localStorage.getItem(historyKey);
+    
+    if (stored) {
+        try {
+            return JSON.parse(stored);
+        } catch (e) {
+            console.warn('Failed to parse performance history:', e);
+        }
+    }
+    
+    return null;
+}
+
+// Get worker configuration
+function getWorkerConfig() {
+    const preferences = state.userPreferences.workerPreferences;
+    
+    return {
+        baseBatchSize: preferences.adaptiveBatchSizing ? 1000 : 500,
+        maxBatchSize: preferences.adaptiveBatchSizing ? 2000 : 1000,
+        minBatchSize: 100,
+        enableTimeSlicing: true,
+        heartbeatInterval: 5000,
+        adaptiveBatchSizing: preferences.adaptiveBatchSizing,
+        stuckDetectionEnabled: preferences.enableStuckDetection,
+        stuckThreshold: preferences.stuckDetectionThreshold
+    };
+}
+
+// Check if worker is making progress or stuck
+function checkWorkerProgress(workerState, worker, month, reject) {
+    const preferences = state.userPreferences.workerPreferences;
+    
+    if (!preferences.enableStuckDetection) {
+        return; // Skip stuck detection if disabled
+    }
+    
+    const now = Date.now();
+    const timeSinceLastHeartbeat = now - workerState.lastHeartbeat;
+    const timeSinceLastProgress = now - workerState.lastProgressUpdate;
+    const stuckThreshold = preferences.stuckDetectionThreshold;
+    
+    // Check for missing heartbeats (worker might be completely stuck)
+    if (timeSinceLastHeartbeat > 15000) { // 15 seconds without heartbeat
+        console.warn(`Worker for ${month} has not sent heartbeat for ${timeSinceLastHeartbeat}ms`);
+        clearTimeout(workerState.timeoutId);
+        clearInterval(workerState.heartbeatCheckId);
+        worker.terminate();
+        recordWorkerFailure(month, 'no_heartbeat', now - workerState.startTime);
+        reject(new Error('Web Worker 失去响应 (无心跳信号)'));
+        return;
+    }
+    
+    // Check for stuck progress (worker alive but not making progress)
+    if (timeSinceLastProgress > stuckThreshold) {
+        workerState.progressStuckCount++;
+        
+        if (!workerState.isStuck) {
+            workerState.isStuck = true;
+            console.warn(`Worker for ${month} appears stuck - no progress for ${timeSinceLastProgress}ms`);
+            
+            // Notify user about stuck state
+            updateProgress(
+                `处理 ${month}: 检测到卡住状态，尝试恢复中...`,
+                50
+            );
+        }
+        
+        // Calculate max retry attempts based on user preferences
+        const maxStuckChecks = Math.max(2, Math.floor(preferences.maxRetryAttempts * 1.5));
+        
+        // If stuck for too long, terminate and switch to fallback
+        if (workerState.progressStuckCount >= maxStuckChecks) {
+            console.error(`Worker for ${month} stuck for too long, terminating`);
+            clearTimeout(workerState.timeoutId);
+            clearInterval(workerState.heartbeatCheckId);
+            worker.terminate();
+            recordWorkerFailure(month, 'stuck_progress', now - workerState.startTime);
+            reject(new Error('Web Worker 卡住状态 (长时间无进度更新)'));
+            return;
+        }
+    }
+}
+
+// Record worker success for performance tracking
+function recordWorkerSuccess(month, processingTime, paperCount) {
+    const historyKey = `worker_perf_${month}`;
+    const existing = getMonthPerformanceHistory(month) || { successes: [], failures: [] };
+    
+    existing.successes.push({
+        timestamp: Date.now(),
+        processingTime,
+        paperCount,
+        timePerPaper: processingTime / paperCount
+    });
+    
+    // Keep only last 5 records
+    existing.successes = existing.successes.slice(-5);
+    
+    // Calculate average time
+    existing.averageTime = existing.successes.reduce((sum, record) => sum + record.processingTime, 0) / existing.successes.length;
+    
+    localStorage.setItem(historyKey, JSON.stringify(existing));
+    
+    // Update global performance stats
+    if (performance.recordWorkerSuccess) {
+        performance.recordWorkerSuccess(month, processingTime, paperCount);
+    }
+}
+
+// Record worker failure for performance tracking
+function recordWorkerFailure(month, reason, timeElapsed) {
+    const historyKey = `worker_perf_${month}`;
+    const existing = getMonthPerformanceHistory(month) || { successes: [], failures: [] };
+    
+    existing.failures.push({
+        timestamp: Date.now(),
+        reason,
+        timeElapsed
+    });
+    
+    // Keep only last 5 records
+    existing.failures = existing.failures.slice(-5);
+    
+    localStorage.setItem(historyKey, JSON.stringify(existing));
+    
+    // Update global performance stats
+    if (performance.recordWorkerFailure) {
+        performance.recordWorkerFailure(month, reason, timeElapsed);
+    }
+}
+
 async function fetchMonthFallback(month) {
-    console.log(`Using fallback method for ${month}`);
+    console.log(`Using enhanced fallback method for ${month}`);
     try {
         const url = `./data/database-${month}.json`;
         console.log(`Fetching URL: ${url}`);
@@ -2447,44 +3182,215 @@ async function fetchMonthFallback(month) {
         // 显示解析进度
         updateProgress(`解析数据文件 ${month}...`, 50);
 
+        // Calculate dynamic timeout for fallback based on file size
+        const fallbackTimeout = calculateFallbackTimeout(totalSize);
+        console.log(`Fallback timeout set to ${fallbackTimeout}ms`);
+
         // 使用Promise.race添加超时控制
         const parsePromise = response.json();
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('JSON解析超时')), 45000) // 45秒超时
+            setTimeout(() => reject(new Error(`JSON解析超时 (${Math.round(fallbackTimeout/1000)}秒)`)), fallbackTimeout)
         );
 
         console.log('Starting JSON parsing...');
         const papers = await Promise.race([parsePromise, timeoutPromise]);
         console.log(`Loaded ${papers.length} papers for month ${month}`);
 
-        // 批量处理论文数据以避免阻塞
-        let processedCount = 0;
-        const batchSize = 500; // 减小批次大小
-        for (let i = 0; i < papers.length; i += batchSize) {
-            const batch = papers.slice(i, i + batchSize);
-            batch.forEach(paper => {
-                if (paper && paper.id && !state.allPapers.has(paper.id)) {
-                    state.allPapers.set(paper.id, paper);
-                }
-            });
-            processedCount += batch.length;
-
-            // 每处理一批数据就让出控制权
-            if (i + batchSize < papers.length) {
-                updateProgress(`处理论文数据: ${processedCount}/${papers.length}`, 60 + (processedCount / papers.length) * 30);
-                await new Promise(resolve => setTimeout(resolve, 5)); // 增加延迟
-            }
-        }
+        // Enhanced batch processing with requestIdleCallback for better main thread performance
+        await processPapersWithIdleCallback(papers, month);
 
         state.loadedMonths.add(month);
-        console.log(`Month ${month} added to loadedMonths`);
+        console.log(`Fallback method completed for ${month}: ${papers.length} papers processed`);
+        
+        return papers.length;
     } catch (error) {
         console.error(`Failed to load data for month ${month}:`, error);
-        if (error.message === 'JSON解析超时') {
+        if (error.message.includes('JSON解析超时')) {
             showToast(`${month} 数据文件过大，解析超时。请稍后重试。`);
         }
         throw error; // 重新抛出错误以便上层处理
     }
+}
+
+// Calculate dynamic timeout for fallback method based on file size
+function calculateFallbackTimeout(fileSize) {
+    const baseTimeout = 45000; // 45 seconds base
+    const maxTimeout = 180000; // 3 minutes maximum
+    const minTimeout = 30000;  // 30 seconds minimum
+    
+    if (!fileSize || fileSize <= 0) {
+        return baseTimeout;
+    }
+    
+    // Calculate timeout based on file size (assuming ~1MB per 15 seconds processing time)
+    const sizeMB = fileSize / (1024 * 1024);
+    const sizeBasedTimeout = sizeMB * 15000; // 15 seconds per MB
+    
+    // Apply network condition modifier
+    const networkCondition = getNetworkCondition();
+    let networkMultiplier = 1;
+    
+    switch (networkCondition) {
+        case 'slow':
+            networkMultiplier = 2;
+            break;
+        case 'fast':
+            networkMultiplier = 0.7;
+            break;
+        default:
+            networkMultiplier = 1.2;
+            break;
+    }
+    
+    const adjustedTimeout = (baseTimeout + sizeBasedTimeout) * networkMultiplier;
+    
+    return Math.max(minTimeout, Math.min(maxTimeout, Math.round(adjustedTimeout)));
+}
+
+// Process papers using requestIdleCallback for better main thread performance
+async function processPapersWithIdleCallback(papers, month) {
+    return new Promise((resolve, reject) => {
+        let processedCount = 0;
+        const adaptiveBatchSize = calculateAdaptiveBatchSize(papers.length);
+        let currentBatchIndex = 0;
+        const totalBatches = Math.ceil(papers.length / adaptiveBatchSize);
+        
+        console.log(`Processing ${papers.length} papers in ${totalBatches} batches of ${adaptiveBatchSize}`);
+        
+        function processNextBatch(deadline) {
+            const batchStartTime = Date.now();
+            let batchProcessed = 0;
+            
+            // Process papers while we have time left in this frame
+            while (currentBatchIndex * adaptiveBatchSize + batchProcessed < papers.length && 
+                   (deadline.timeRemaining() > 1 || deadline.didTimeout)) {
+                
+                const paperIndex = currentBatchIndex * adaptiveBatchSize + batchProcessed;
+                const paper = papers[paperIndex];
+                
+                if (paper && paper.id && !state.allPapers.has(paper.id)) {
+                    state.allPapers.set(paper.id, paper);
+                }
+                
+                batchProcessed++;
+                processedCount++;
+                
+                // Update progress every 100 papers or when batch is complete
+                if (batchProcessed % 100 === 0 || paperIndex === papers.length - 1) {
+                    const progressPercentage = Math.round((processedCount / papers.length) * 100);
+                    const processingSpeed = processedCount / ((Date.now() - batchStartTime) / 1000);
+                    
+                    updateProgress(
+                        `主线程处理 ${month}: ${processedCount}/${papers.length} (${Math.round(processingSpeed)} 篇/秒)`,
+                        50 + (progressPercentage * 0.4)
+                    );
+                }
+                
+                // Break if we've processed a full batch
+                if (batchProcessed >= adaptiveBatchSize) {
+                    break;
+                }
+            }
+            
+            // Update batch index
+            if (batchProcessed >= adaptiveBatchSize || currentBatchIndex * adaptiveBatchSize + batchProcessed >= papers.length) {
+                currentBatchIndex++;
+            }
+            
+            // Check if we're done
+            if (processedCount >= papers.length) {
+                console.log(`Completed processing ${processedCount} papers for ${month}`);
+                resolve();
+                return;
+            }
+            
+            // Schedule next batch
+            if (window.requestIdleCallback) {
+                requestIdleCallback(processNextBatch, { timeout: 1000 });
+            } else {
+                // Fallback for browsers without requestIdleCallback
+                setTimeout(() => processNextBatch({ timeRemaining: () => 5, didTimeout: false }), 0);
+            }
+        }
+        
+        // Start processing
+        if (window.requestIdleCallback) {
+            requestIdleCallback(processNextBatch, { timeout: 1000 });
+        } else {
+            setTimeout(() => processNextBatch({ timeRemaining: () => 5, didTimeout: false }), 0);
+        }
+    });
+}
+
+// Calculate adaptive batch size for fallback processing
+function calculateAdaptiveBatchSize(totalPapers) {
+    const baseBatchSize = 500;
+    const maxBatchSize = 1000;
+    const minBatchSize = 100;
+    
+    // Check system performance
+    const performanceMetrics = getSystemPerformanceMetrics();
+    
+    let adaptiveBatchSize = baseBatchSize;
+    
+    // Adjust based on total papers
+    if (totalPapers < 1000) {
+        adaptiveBatchSize = minBatchSize;
+    } else if (totalPapers > 5000) {
+        adaptiveBatchSize = maxBatchSize;
+    } else {
+        adaptiveBatchSize = Math.round(baseBatchSize * (totalPapers / 2500));
+    }
+    
+    // Adjust based on system performance
+    if (performanceMetrics.isLowEnd) {
+        adaptiveBatchSize = Math.round(adaptiveBatchSize * 0.5);
+    } else if (performanceMetrics.isHighEnd) {
+        adaptiveBatchSize = Math.round(adaptiveBatchSize * 1.5);
+    }
+    
+    // Adjust based on memory usage
+    if (performance.memoryUsage > 100) { // >100MB
+        adaptiveBatchSize = Math.round(adaptiveBatchSize * 0.7);
+    }
+    
+    return Math.max(minBatchSize, Math.min(maxBatchSize, adaptiveBatchSize));
+}
+
+// Get basic system performance metrics
+function getSystemPerformanceMetrics() {
+    const metrics = {
+        isLowEnd: false,
+        isHighEnd: false,
+        cpuSlowdown: 1
+    };
+    
+    // Check hardware concurrency
+    if (navigator.hardwareConcurrency) {
+        if (navigator.hardwareConcurrency <= 2) {
+            metrics.isLowEnd = true;
+        } else if (navigator.hardwareConcurrency >= 8) {
+            metrics.isHighEnd = true;
+        }
+    }
+    
+    // Check device memory if available
+    if (navigator.deviceMemory) {
+        if (navigator.deviceMemory <= 2) {
+            metrics.isLowEnd = true;
+        } else if (navigator.deviceMemory >= 8) {
+            metrics.isHighEnd = true;
+        }
+    }
+    
+    // Check connection speed
+    if (navigator.connection) {
+        if (navigator.connection.effectiveType === '2g' || navigator.connection.effectiveType === 'slow-2g') {
+            metrics.isLowEnd = true;
+        }
+    }
+    
+    return metrics;
 }
 
 function renderPapers(papersForMonth, month) {
